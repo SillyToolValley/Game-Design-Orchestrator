@@ -1,0 +1,89 @@
+name: Feature request
+description: Propose a focused co-design, automation, CLI, or usability improvement.
+title: '[Feature]: '
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Start with a real designer problem. More generated documentation is not a benefit by itself.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Designer problem
+      description: What is difficult today, for whom, and why does it matter?
+    validations:
+      required: true
+
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Current workflow
+      description: How is the problem handled now, and where does it fail or become repetitive?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Smallest useful change
+      description: Describe the behavior, not an amount of generated output.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Primary area
+      options:
+        - Overlooked options and recommendations
+        - Reference-backed challenge
+        - Human decisions and rationale
+        - Repetitive update automation
+        - Test, system, or review records
+        - CLI or filesystem behavior
+        - Agent-platform integration
+        - Documentation or examples
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: authority
+    attributes:
+      label: Human choice
+      description: Which consequential choice remains with the person, and how is approval made explicit?
+    validations:
+      required: true
+
+  - type: textarea
+    id: sources
+    attributes:
+      label: Sources and uncertainty
+      description: If this uses external claims, how will facts, inferences, assumptions, and transfer limits stay distinct?
+
+  - type: textarea
+    id: simplicity
+    attributes:
+      label: Simplicity check
+      description: What repetitive work disappears, and what new paperwork or required files would this add?
+    validations:
+      required: true
+
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility and migration
+      description: Note changes to CLI arguments, lean files, IDs, or existing projects.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+
+  - type: checkboxes
+    id: participation
+    attributes:
+      label: Contribution
+      options:
+        - label: I am willing to help write tests or documentation for this change.

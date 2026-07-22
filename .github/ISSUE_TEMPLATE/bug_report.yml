@@ -1,0 +1,105 @@
+name: Bug report
+description: Report a reproducible problem with the skill, lean files, CLI, or workspace checker.
+title: '[Bug]: '
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Game Design Orchestrator. Remove private designs, player data, credentials, and sensitive paths. For a security vulnerability, stop and follow SECURITY.md.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Codex co-design workflow
+        - Project initializer
+        - Decision or reference recorder
+        - Test, system, or review generator
+        - Workspace consistency checker
+        - Template or generated file
+        - Documentation or example
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: revision
+    attributes:
+      label: Version or commit
+      placeholder: 0.1.0-beta or abc1234
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - Linux
+        - macOS
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: Python 3.12.4
+
+  - type: input
+    id: codex
+    attributes:
+      label: Codex environment
+      description: App, CLI, or other agent environment and version if known.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Problem
+      description: What happened, and how did it get in the way?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: Include exact commands or prompts and a minimal fictional file layout.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Paste the smallest useful output from the command or agent.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Mention the artifact kind, links, concurrency, interrupted writes, or existing files when relevant.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety checks
+      options:
+        - label: I removed secrets, personal player information, recordings, and proprietary game content.
+          required: true
+        - label: This report contains no undisclosed vulnerability details.
+          required: true

@@ -1,0 +1,57 @@
+name: CI
+
+'on':
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.10', '3.11', '3.12', '3.13']
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Compile scripts
+        run: python -m compileall -q skills/orchestrate-game-design/scripts
+
+      - name: Smoke-test lean CLI
+        run: |
+          python skills/orchestrate-game-design/scripts/init_design_project.py --version
+          python skills/orchestrate-game-design/scripts/create_design_artifact.py --version
+          python skills/orchestrate-game-design/scripts/check_design_workspace.py --version
+          python skills/orchestrate-game-design/scripts/init_design_project.py --help
+          python skills/orchestrate-game-design/scripts/create_design_artifact.py --help
+          python skills/orchestrate-game-design/scripts/create_design_artifact.py decision --help
+          python skills/orchestrate-game-design/scripts/create_design_artifact.py reference --help
+          python skills/orchestrate-game-design/scripts/create_design_artifact.py test --help
+          python skills/orchestrate-game-design/scripts/create_design_artifact.py system --help
+          python skills/orchestrate-game-design/scripts/create_design_artifact.py review --help
+          python skills/orchestrate-game-design/scripts/check_design_workspace.py --help
+
+      - name: Run test suite
+        run: python -m unittest discover -s skills/orchestrate-game-design/tests -p 'test_*.py' -v
