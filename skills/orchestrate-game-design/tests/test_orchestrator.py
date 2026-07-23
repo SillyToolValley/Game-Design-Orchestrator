@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import importlib.util
 import json
 import os
 import subprocess
@@ -8,6 +9,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 from typing import Any
 
@@ -607,6 +609,38 @@ class LeanOrchestratorTests(unittest.TestCase):
                     check=False,
                 )
                 self.assertNotEqual(0, result.returncode)
+
+    def test_atomic_replace_retries_transient_permission_denial(self) -> None:
+        specification = importlib.util.spec_from_file_location(
+            "gdo_workspace_under_test", SCRIPTS_ROOT / "workspace.py"
+        )
+        self.assertIsNotNone(specification)
+        assert specification is not None and specification.loader is not None
+        module = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(module)
+
+        with temporary_workspace("gdo-replace-retry-") as temporary:
+            root = Path(temporary)
+            source = root / "state.json.tmp"
+            destination = root / "state.json"
+            source.write_text("new\n", encoding="utf-8")
+            destination.write_text("old\n", encoding="utf-8")
+
+            actual_replace = module.os.replace
+            attempts = 0
+
+            def flaky_replace(source_path: object, destination_path: object) -> None:
+                nonlocal attempts
+                attempts += 1
+                if attempts < 3:
+                    raise PermissionError("transient file-sharing denial")
+                actual_replace(source_path, destination_path)
+
+            with mock.patch.object(module.os, "replace", side_effect=flaky_replace):
+                module.replace_with_retry(source, destination)
+
+            self.assertEqual(3, attempts)
+            self.assertEqual("new\n", destination.read_text(encoding="utf-8"))
 
     def test_concurrent_creation_uses_unique_monotonic_ids(self) -> None:
         with temporary_workspace("gdo-concurrent-") as temporary:

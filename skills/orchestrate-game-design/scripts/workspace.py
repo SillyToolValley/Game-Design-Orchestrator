@@ -176,6 +176,22 @@ def write_new(path: Path, text: str, target: Path) -> bool:
         return False
 
 
+def replace_with_retry(source: str | Path, destination: Path) -> None:
+    """Retry transient file-sharing denials without weakening atomic replacement."""
+
+    deadline = time.monotonic() + 2.0
+    delay = 0.01
+    while True:
+        try:
+            os.replace(source, destination)
+            return
+        except PermissionError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(delay)
+            delay = min(delay * 2, 0.10)
+
+
 def atomic_write(path: Path, text: str, target: Path) -> None:
     """Atomically replace a regular workspace file with UTF-8 text."""
 
@@ -194,7 +210,7 @@ def atomic_write(path: Path, text: str, target: Path) -> None:
             os.fsync(handle.fileno())
         require_contained(path, target)
         require_regular_if_present(path, target)
-        os.replace(temporary_name, path)
+        replace_with_retry(temporary_name, path)
     except BaseException:
         try:
             os.unlink(temporary_name)

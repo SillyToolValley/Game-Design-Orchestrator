@@ -18,8 +18,8 @@
                   "scripts/check_installation.py":  "163b465357e3caa9408c47f763b873b1a89c58bb2c3ca0414898ac360d8cae4e",
                   "scripts/create_design_artifact.py":  "b838036efe137b3a6760db5052b5e497f2b59ed36aceb1be7701ee99ddc384c2",
                   "scripts/init_design_project.py":  "acdecfacc3f600b0033e419e98bbd9f62261d5f058ab988647359a4a858efc97",
-                  "scripts/workspace.py":  "58453d731242d73ed89103ee9150a40b8be73e17c38b5441759a72a06c2892dd",
+                  "scripts/workspace.py":  "eb351b9efb3afc805ac4cc84c649d1a4d4aa991fa85422a173aa09b3b6ac305e",
                   "SKILL.md":  "088bec0c055d7cbd7024d9a8e9a406f76346ab862bf65d1a7ccdcd7b17fad67d",
-                  "tests/test_orchestrator.py":  "2c091f2b0452ff77c67226ad9ec73842fffcbe05389701e32e475041934d2545"
+                  "tests/test_orchestrator.py":  "5d628e6f0ba3e22dbf71d666185deefbbedc514464447cc79148e16be6d20b04"
               }
 }

@@ -20,6 +20,7 @@ Corrective beta release after a stale experimental checkout produced a process-h
 - Detect retired 0.2.x governance workspaces structurally and fail before initialization or artifact creation can mix formats.
 - Require an exact workspace tool version and contract, with an explicit provenance-recording migration for official 0.1.0-beta state instead of silent rewriting.
 - Replace installed skill folders rather than merging upgrades over stale files.
+- Retry only transient permission denials around atomic file replacement so concurrent CLI writes remain reliable on Windows runners and antivirus-scanned folders.
 
 
 ## 0.1.0-beta
