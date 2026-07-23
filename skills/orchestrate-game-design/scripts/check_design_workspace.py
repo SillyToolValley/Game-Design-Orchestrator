@@ -23,6 +23,7 @@ try:
         WorkspaceError,
         id_number,
         load_state,
+        legacy_workspace_indicators,
         require_contained,
         resolve_target,
     )
@@ -38,6 +39,7 @@ except ImportError:
         WorkspaceError,
         id_number,
         load_state,
+        legacy_workspace_indicators,
         require_contained,
         resolve_target,
     )
@@ -69,6 +71,7 @@ class Doctor:
         self.state: dict[str, object] | None = None
         self.text_by_path: dict[Path, str] = {}
         self.definitions: dict[str, list[Path]] = {}
+        self.legacy = False
 
     def add_error(self, code: str, path: Path, message: str) -> None:
         self.errors.append(Issue(code, self.display(path), message))
@@ -88,6 +91,18 @@ class Doctor:
                 "missing-workspace",
                 self.target,
                 "Run init_design_project.py before using this command.",
+            )
+            return
+        indicators = legacy_workspace_indicators(self.target)
+        if indicators:
+            self.legacy = True
+            self.add_error(
+                "legacy-workspace-format",
+                self.target,
+                "Incompatible legacy governance workspace detected: "
+                + ", ".join(indicators)
+                + ". Do not repair it with this checker; import only useful creative "
+                "content into a clean reader-facing workspace.",
             )
             return
         design = self.target / "design.md"
@@ -257,6 +272,8 @@ class Doctor:
 
     def run(self) -> None:
         self.check_structure()
+        if self.legacy:
+            return
         self.read_markdown()
         self.check_tokens()
         self.collect_definitions()

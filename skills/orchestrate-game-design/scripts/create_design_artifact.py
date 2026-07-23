@@ -20,6 +20,7 @@ try:
         atomic_json,
         atomic_write,
         load_state,
+        reject_legacy_workspace,
         read_template,
         render_template,
         require_contained,
@@ -38,6 +39,7 @@ except ImportError:
         atomic_json,
         atomic_write,
         load_state,
+        reject_legacy_workspace,
         read_template,
         render_template,
         require_contained,
@@ -286,8 +288,11 @@ def main() -> int:
             raise WorkspaceError(
                 f"Missing design workspace {target}. Run init_design_project.py first."
             )
+        reject_legacy_workspace(target)
         today = date.today().isoformat()
         state_path = target / ".gdo" / "state.json"
+        # Fail on version or contract mismatch before the lock file is opened.
+        load_state(target)
         with workspace_lock(target):
             state = load_state(target)
             artifact_id, next_number = allocate_id(state, args.kind, target)

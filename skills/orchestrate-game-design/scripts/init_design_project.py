@@ -15,6 +15,8 @@ try:
         WorkspaceError,
         initial_state,
         load_state,
+        migrate_official_state,
+        reject_legacy_workspace,
         read_template,
         render_template,
         resolve_root,
@@ -28,6 +30,8 @@ except ImportError:
         WorkspaceError,
         initial_state,
         load_state,
+        migrate_official_state,
+        reject_legacy_workspace,
         read_template,
         render_template,
         resolve_root,
@@ -52,6 +56,11 @@ def main() -> int:
     parser.add_argument(
         "--directory", default=DEFAULT_DIRECTORY, help="Design workspace directory."
     )
+    parser.add_argument(
+        "--migrate",
+        action="store_true",
+        help="Explicitly migrate an official 0.1.0-beta workspace state.",
+    )
     args = parser.parse_args()
 
     try:
@@ -59,12 +68,18 @@ def main() -> int:
         target = resolve_target(root, args.directory)
         if target.exists() and not target.is_dir():
             raise WorkspaceError(f"Design workspace is not a directory: {target}.")
+        reject_legacy_workspace(target)
         project_name = (args.name or root.name).strip()
         if not project_name:
             raise WorkspaceError("Project name must not be empty.")
 
         target.mkdir(parents=True, exist_ok=True)
         state_path = target / ".gdo" / "state.json"
+        migrated = (
+            migrate_official_state(target)
+            if args.migrate and state_path.exists()
+            else False
+        )
         existing_state = load_state(target) if state_path.exists() else None
         effective_name = (
             existing_state["project_name"] if existing_state is not None else project_name
@@ -96,6 +111,7 @@ def main() -> int:
         json.dumps(
             {
                 "target": str(target),
+                "migrated": migrated,
                 "created": created,
                 "skipped": skipped,
             },

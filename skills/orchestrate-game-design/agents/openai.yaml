@@ -1,4 +1,4 @@
 interface:
-  display_name: 'Game Design Orchestrator'
-  short_description: 'Human-led choices, cited critique, automated follow-through'
-  default_prompt: 'Use $orchestrate-game-design to expand my options, challenge assumptions with cited evidence, recommend a direction, and automate the design work I approve.'
+  display_name: "Game Design Orchestrator"
+  short_description: "Human-led options, critique, and practical GDDs"
+  default_prompt: "Use $orchestrate-game-design to surface overlooked options, challenge assumptions, and produce one practical game design handoff without process bloat."

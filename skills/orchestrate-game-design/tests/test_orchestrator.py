@@ -4,6 +4,7 @@ import concurrent.futures
 import json
 import os
 import subprocess
+import shutil
 import sys
 import tempfile
 import unittest
@@ -16,7 +17,9 @@ SCRIPTS_ROOT = SKILL_ROOT / "scripts"
 INIT_SCRIPT = SCRIPTS_ROOT / "init_design_project.py"
 CREATE_SCRIPT = SCRIPTS_ROOT / "create_design_artifact.py"
 CHECK_SCRIPT = SCRIPTS_ROOT / "check_design_workspace.py"
-VERSION = "0.1.0-beta"
+INSTALL_CHECK_SCRIPT = SCRIPTS_ROOT / "check_installation.py"
+VERSION = "0.1.1-beta"
+CONTRACT_ID = "human-led-deliverable-first-v1"
 
 
 def temporary_workspace(prefix: str) -> tempfile.TemporaryDirectory[str]:
@@ -36,6 +39,7 @@ def run_python(
         capture_output=True,
         text=True,
         encoding="utf-8",
+        errors="replace",
         timeout=timeout,
         check=False,
     )
@@ -81,11 +85,50 @@ def check_workspace(
 
 def issue_codes(report: dict[str, Any], key: str) -> set[str]:
     return {issue["code"] for issue in report[key]}
+def tree_snapshot(root: Path) -> dict[str, bytes]:
+    return {
+        path.relative_to(root).as_posix(): path.read_bytes()
+        for path in sorted(root.rglob("*"))
+        if path.is_file()
+    }
+
+
+def write_legacy_signature(target: Path) -> None:
+    target.mkdir(parents=True, exist_ok=True)
+    (target / "project-state.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "project_name": "Legacy",
+                "stage": "prototype",
+                "review_mode": "lean",
+                "next_ids": {
+                    "hypothesis": 2,
+                    "prototype": 2,
+                    "evidence": 1,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (target / "design-config.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "workflow": {"enabled_gates": ["concept", "prototype"]},
+                "evidence_kinds": [{"id": "player"}],
+                "test_types": [{"id": "concept"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
 
 
 class LeanOrchestratorTests(unittest.TestCase):
     def test_versions_are_consistent(self) -> None:
-        for script in (INIT_SCRIPT, CREATE_SCRIPT, CHECK_SCRIPT):
+        for script in (INIT_SCRIPT, CREATE_SCRIPT, CHECK_SCRIPT, INSTALL_CHECK_SCRIPT):
             result = run_python(script, "--version")
             self.assertEqual(VERSION, result.stdout.strip())
 
@@ -98,6 +141,15 @@ class LeanOrchestratorTests(unittest.TestCase):
                 )
             )
             self.assertEqual(VERSION, state["tool_version"])
+            self.assertEqual(CONTRACT_ID, state["contract_id"])
+
+        install = payload(
+            run_python(
+                INSTALL_CHECK_SCRIPT, "--json", "--expect-version", VERSION
+            )
+        )
+        self.assertEqual([], install["issues"])
+        self.assertEqual(CONTRACT_ID, install["contract_id"])
 
     def test_init_creates_only_the_minimal_workspace(self) -> None:
         with temporary_workspace("gdo-init-minimal-") as temporary:
@@ -143,6 +195,253 @@ class LeanOrchestratorTests(unittest.TestCase):
                 design_path.read_text(encoding="utf-8"),
             )
             self.assertEqual(before_state, state_path.read_text(encoding="utf-8"))
+
+    def test_init_refuses_legacy_workspace_without_any_write(self) -> None:
+        with temporary_workspace("gdo-legacy-init-") as temporary:
+            root = Path(temporary)
+            target = root / "game-design"
+            write_legacy_signature(target)
+            (target / "vision.md").write_text("Keep this source material.\n", encoding="utf-8")
+            before = tree_snapshot(root)
+
+            result = run_python(
+                INIT_SCRIPT,
+                "--root",
+                root,
+                "--name",
+                "Must Not Mix",
+                check=False,
+            )
+
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("legacy governance workspace", result.stderr.lower())
+            self.assertEqual(before, tree_snapshot(root))
+            self.assertFalse((target / "design.md").exists())
+            self.assertFalse((target / ".gdo").exists())
+
+    def test_official_010_workspace_requires_explicit_migration(self) -> None:
+        with temporary_workspace("gdo-migrate-010-") as temporary:
+            root = Path(temporary)
+            initialize(root)
+            target = root / "game-design"
+            state_path = target / ".gdo" / "state.json"
+            design_before = (target / "design.md").read_bytes()
+            old_state = json.loads(state_path.read_text(encoding="utf-8"))
+            old_state.pop("contract_id")
+            old_state["tool_version"] = "0.1.0-beta"
+            old_state["next_ids"]["test"] = 4
+            state_path.write_text(json.dumps(old_state), encoding="utf-8")
+            before = tree_snapshot(root)
+
+            blocked = run_python(
+                INIT_SCRIPT, "--root", root, check=False
+            )
+            self.assertNotEqual(0, blocked.returncode)
+            self.assertIn("--migrate", blocked.stderr)
+            self.assertEqual(before, tree_snapshot(root))
+
+            migrated = payload(
+                run_python(INIT_SCRIPT, "--root", root, "--migrate")
+            )
+            self.assertTrue(migrated["migrated"])
+            new_state = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(VERSION, new_state["tool_version"])
+            self.assertEqual(CONTRACT_ID, new_state["contract_id"])
+            self.assertEqual(4, new_state["next_ids"]["test"])
+            self.assertEqual(
+                "0.1.0-beta",
+                new_state["migration"]["from_tool_version"],
+            )
+            self.assertEqual(design_before, (target / "design.md").read_bytes())
+            result, report = check_workspace(root)
+            self.assertEqual(0, result.returncode)
+            self.assertEqual(0, report["summary"]["errors"])
+
+    def test_checker_reports_legacy_workspace_as_one_clear_error(self) -> None:
+        with temporary_workspace("gdo-legacy-check-") as temporary:
+            root = Path(temporary)
+            write_legacy_signature(root / "game-design")
+            result, report = check_workspace(root, check=False)
+            self.assertNotEqual(0, result.returncode)
+            self.assertEqual(
+                {"legacy-workspace-format"},
+                issue_codes(report, "errors"),
+            )
+            self.assertEqual([], report["warnings"])
+
+    def test_checker_reports_mixed_beta_and_legacy_workspace(self) -> None:
+        with temporary_workspace("gdo-mixed-check-") as temporary:
+            root = Path(temporary)
+            initialize(root)
+            write_legacy_signature(root / "game-design")
+            result, report = check_workspace(root, check=False)
+            self.assertNotEqual(0, result.returncode)
+            self.assertEqual(
+                {"legacy-workspace-format"},
+                issue_codes(report, "errors"),
+            )
+
+    def test_legacy_detection_ignores_vocabulary_and_single_filenames(self) -> None:
+        with temporary_workspace("gdo-legacy-false-positive-") as temporary:
+            root = Path(temporary)
+            initialize(root)
+            target = root / "game-design"
+            design = target / "design.md"
+            design.write_text(
+                design.read_text(encoding="utf-8")
+                + "\nThe fiction includes a gate, veto, hypothesis, and scorecard.\n",
+                encoding="utf-8",
+            )
+            (target / "vision.md").write_text("A normal project note.\n", encoding="utf-8")
+            (target / "project-state.json").write_text(
+                '{"schema_version": 2, "note": "unrelated"}\n',
+                encoding="utf-8",
+            )
+            result, report = check_workspace(root)
+            self.assertEqual(0, result.returncode)
+            self.assertNotIn(
+                "legacy-workspace-format",
+                issue_codes(report, "errors"),
+            )
+
+    def test_version_mismatch_blocks_artifact_without_rewriting_state(self) -> None:
+        with temporary_workspace("gdo-version-mismatch-") as temporary:
+            root = Path(temporary)
+            initialize(root)
+            state_path = root / "game-design" / ".gdo" / "state.json"
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state["tool_version"] = "0.1.0-beta"
+            state_path.write_text(json.dumps(state), encoding="utf-8")
+            before = state_path.read_bytes()
+
+            result = run_python(
+                CREATE_SCRIPT,
+                "--root",
+                root,
+                "test",
+                "--name",
+                "Must not exist",
+                check=False,
+            )
+
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("tool_version", result.stderr)
+            self.assertEqual(before, state_path.read_bytes())
+            self.assertFalse((root / "game-design" / "tests").exists())
+
+    def test_installation_check_rejects_merged_legacy_files(self) -> None:
+        with temporary_workspace("gdo-install-legacy-") as temporary:
+            copied_skill = Path(temporary) / "orchestrate-game-design"
+            shutil.copytree(SKILL_ROOT, copied_skill)
+            legacy = copied_skill / "scripts" / "audit_design_project.py"
+            legacy.write_text("# retired\n", encoding="utf-8")
+            result = run_python(
+                copied_skill / "scripts" / "check_installation.py",
+                "--json",
+                "--expect-version",
+                VERSION,
+                check=False,
+            )
+            report = payload(result)
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn(
+                "scripts/audit_design_project.py",
+                report["legacy_remnants"],
+            )
+
+    def test_installation_check_verifies_manifest_files_and_hashes(self) -> None:
+        with temporary_workspace("gdo-install-manifest-") as temporary:
+            copied_skill = Path(temporary) / "orchestrate-game-design"
+            shutil.copytree(SKILL_ROOT, copied_skill)
+            missing = "references/practical-deliverables.md"
+            (copied_skill / missing).unlink()
+            skill_file = copied_skill / "SKILL.md"
+            skill_file.write_text(
+                skill_file.read_text(encoding="utf-8") + "\nchanged\n",
+                encoding="utf-8",
+            )
+            extra = copied_skill / "scripts" / "unexpected.py"
+            extra.write_text("# stale\n", encoding="utf-8")
+
+            result = run_python(
+                copied_skill / "scripts" / "check_installation.py",
+                "--json",
+                "--expect-version",
+                VERSION,
+                check=False,
+            )
+            report = payload(result)
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn(missing, report["missing_files"])
+            self.assertIn("SKILL.md", report["changed_files"])
+            self.assertIn("scripts/unexpected.py", report["unexpected_files"])
+
+    def test_one_off_handoff_contract_is_explicit(self) -> None:
+        skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+        deliverables = (
+            SKILL_ROOT / "references" / "practical-deliverables.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "Do not initialize a GDO workspace",
+            skill,
+        )
+        self.assertIn(
+            "write the primary file directly",
+            deliverables,
+        )
+        self.assertIn(
+            "Default to one reader-facing primary document",
+            skill,
+        )
+        self.assertIn("fresh independent reviewer", skill)
+        self.assertIn("require calculation of high-impact numeric claims", skill)
+        self.assertIn("actual chronological run", skill)
+        self.assertIn("isolated zero-modifier check", deliverables)
+        self.assertIn("A base-mode witness cannot validate a variant", deliverables)
+        self.assertIn("Do not add a fallback merely because", deliverables)
+        self.assertIn("Use a one-tick tolerance", deliverables)
+        self.assertIn("preserve its trigger", deliverables)
+
+    def test_packaged_surface_stays_lean(self) -> None:
+        self.assertEqual(
+            {
+                "check_design_workspace.py",
+                "check_installation.py",
+                "create_design_artifact.py",
+                "init_design_project.py",
+                "workspace.py",
+            },
+            {
+                path.name
+                for path in (SKILL_ROOT / "scripts").glob("*.py")
+            },
+        )
+        self.assertEqual(
+            {
+                "artifact-recipes.md",
+                "practical-deliverables.md",
+                "research-and-comparables.md",
+                "review-lenses.md",
+            },
+            {
+                path.name
+                for path in (SKILL_ROOT / "references").glob("*.md")
+            },
+        )
+        self.assertEqual(
+            {
+                "decisions.md.tmpl",
+                "design.md.tmpl",
+                "references.md.tmpl",
+                "review.md.tmpl",
+                "system-spec.md.tmpl",
+                "test-card.md.tmpl",
+            },
+            {
+                path.name
+                for path in (SKILL_ROOT / "assets" / "templates").glob("*.tmpl")
+            },
+        )
 
     def test_init_rejects_root_escape(self) -> None:
         with temporary_workspace("gdo-containment-") as temporary:
@@ -217,7 +516,7 @@ class LeanOrchestratorTests(unittest.TestCase):
             self.assertIn("The source studied a different audience.", references)
             self.assertEqual(1, references.count("type=reference id=REF-001"))
 
-    def test_record_help_exposes_context_not_process_bureaucracy(self) -> None:
+    def test_record_help_exposes_design_context_flags(self) -> None:
         decision_help = run_python(CREATE_SCRIPT, "decision", "--help").stdout
         for flag in ("--option", "--impact", "--revisit"):
             self.assertIn(flag, decision_help)
@@ -349,17 +648,22 @@ class LeanOrchestratorTests(unittest.TestCase):
             for artifact_id in ids:
                 self.assertEqual(1, text.count(f"type=decision id={artifact_id}"))
 
-    def test_check_is_a_doctor_not_a_rating(self) -> None:
+    def test_check_payload_stays_mechanical_not_a_rating(self) -> None:
         with temporary_workspace("gdo-audit-clean-") as temporary:
             root = Path(temporary)
             initialize(root)
             create(root, "test", "Navigation question")
             result, report = check_workspace(root)
             self.assertEqual(0, result.returncode)
+            self.assertEqual(
+                {"target", "version", "summary", "errors", "warnings", "note"},
+                set(report),
+            )
+            self.assertEqual(
+                {"errors", "warnings", "files_checked"},
+                set(report["summary"]),
+            )
             self.assertEqual(0, report["summary"]["errors"])
-            self.assertNotIn("passed", report)
-            self.assertNotIn("gate", report)
-            self.assertNotIn("score", report)
             self.assertEqual([], report["errors"])
 
     def test_check_finds_duplicate_ids(self) -> None:
@@ -441,7 +745,7 @@ class LeanOrchestratorTests(unittest.TestCase):
             _result, report = check_workspace(root, check=False)
             self.assertIn("invalid-state", issue_codes(report, "errors"))
 
-    def test_default_generated_files_do_not_contain_legacy_research_terms(self) -> None:
+    def test_default_generated_files_avoid_retired_workflow_markers(self) -> None:
         with temporary_workspace("gdo-no-legacy-") as temporary:
             root = Path(temporary)
             initialize(root)

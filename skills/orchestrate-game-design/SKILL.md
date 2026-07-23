@@ -1,6 +1,6 @@
 ---
 name: orchestrate-game-design
-description: Help a human design a game by surfacing overlooked options, challenging assumptions with traceable references, recommending the next decision or test, and automating approved documentation and specification work. Use when starting or continuing a game concept, comparing mechanics, researching comparables, reviewing a design, planning a focused test, interpreting observations, or turning an approved direction into an implementable system.
+description: Help a human design a game by surfacing overlooked options, challenging assumptions with traceable references, producing practical GDDs and plans, and automating approved follow-through. Use when starting or continuing a game concept, requesting a game design document or production plan, comparing mechanics, researching comparables, reviewing a design, planning a focused test, interpreting observations, or turning an approved direction into an implementable system.
 ---
 
 # Orchestrate Game Design
@@ -18,15 +18,36 @@ Act as the human designer's thought partner and production assistant. Expand the
 - Cite project files, user-provided material, direct observation, or primary external sources next to the claim they support. Never invent a citation, player response, test result, or market fact.
 - Treat AI critique and simulations as design input, not proof that players will enjoy or understand the game.
 - Create an artifact only when it directly supports a current decision, test, or implementation handoff.
+- Keep the requested player-facing or production outcome ahead of the workflow. Internal rigor must improve the deliverable, not become the deliverable.
 - After the human approves a direction, automate the clerical work: allocate IDs, update summaries, preserve decision history, propagate changes, check contradictions, and draft the next useful artifact.
 
 ## Start or resume
 
+0. Resolve `<skill-dir>` from this loaded file. Before the first file write in a task, run `python '<skill-dir>/scripts/check_installation.py' --expect-version 0.1.1-beta`. Keep this terminal check out of design documents. If it fails, stop writes, report the exact path and mismatch, and do not fall back to adjacent legacy scripts.
 1. Find the project root and read the smallest relevant context: existing design files, the user's brief, and any implementation or research directly related to the current question.
 2. If `game-design/design.md` exists, summarize the current direction, open choice, questionable assumption, and best next action. Do not repeat settled discovery questions.
 3. If no design file exists, clarify the idea with at most three high-value questions. Then present a compact interpretation and any important alternatives before writing files.
 4. If the user only wants discussion or critique, do not create or modify files unless persistence would clearly help and the user approves it.
-5. When persistence is approved, begin with only `game-design/design.md`. Add other artifacts when their triggering event occurs.
+5. When persistence is approved and no finished handoff was requested, begin with only `game-design/design.md`. Add another artifact only when it has a distinct current use.
+
+## Deliverable contract
+
+Read [references/practical-deliverables.md](references/practical-deliverables.md) when the user asks for a GDD, game plan, design brief, production plan, or another finished handoff.
+
+- The requested deliverable is the product. Do not substitute audit records, test protocols, option logs, or workflow evidence for it.
+- Default to one reader-facing primary document. Add at most two companion documents only when they serve a distinct operator or implementation purpose.
+- For a one-off handoff in a new destination, write the primary document directly. Do not initialize a GDO workspace or create `design.md`, `.gdo`, or numbered artifacts unless the user also asked for an ongoing managed workspace.
+- Synthesize useful alternatives, critique, references, risks, and validation ideas into the primary document. Do not serialize the agent's reasoning process into a folder tree.
+- When the user asks to finish, resolve low-impact unknowns with clearly labeled assumptions and a recommended default. Ask only about choices that would materially change the direction.
+- Unknown player response does not block an honest design handoff. State what is unverified and the cheapest useful test without withholding the requested design.
+- Do not leave "TBD", empty sections, or blank forms in a final handoff. Omit irrelevant sections instead.
+- Make the document usable tomorrow: trace at least one concrete play sequence and make relevant controls, rules, states, win/fail/retry behavior, feedback, scope, cut order, and implementation sequence explicit.
+- Call a handoff implementation-ready only when its committed interaction, formulas, required authored data, and fallback rules are internally complete. If the core mechanic still needs a go/no-go graybox, label the document graybox-ready and state the decision it unlocks.
+- Before finalizing a substantive handoff, use one fresh independent reviewer when subagents are available; otherwise perform a separate contradiction pass. Give the reviewer the brief and draft, require calculation of high-impact numeric claims where feasible, integrate valid fixes into the primary document, and keep the review transient rather than creating another deliverable.
+- Validate authored content in the actual chronological run, including state changes caused by earlier outcomes, triggered modifiers, tutorial timing, and conditional content. An isolated default-state calculation does not prove that a later lesson or challenge still works.
+- Treat each claimed-ready mode, fallback, content cut, and late-trigger branch as its own chronological scenario. Do not transfer a default-run result to a variant: replay the exact branch or label it unverified and below the safe ship/cut line.
+- Do not invent a backup mode merely to make the handoff look complete. If the core gate fails, an explicit stop-and-redesign decision is valid; specify a second buildable mode only when the user or production constraint actually needs one.
+- For a time-boxed jam, budget human time rather than treating every elapsed hour as labor. Preserve sleep, meals, integration, playtest, first-upload, and submission margin.
 
 ## The design loop
 
@@ -59,16 +80,18 @@ Read [references/research-and-comparables.md](references/research-and-comparable
 | Several directions compete | Compare two to four options and request one human choice |
 | A premise seems questionable | Research it or create the cheapest focused `TST-*` card |
 | The interaction is hard to imagine | Sketch an example, flow, or throwaway prototype before adding detail |
-| A direction is approved for implementation | Create or update one focused `SYS-*` specification |
+| The user requests a finished GDD or plan | Produce one practical primary handoff using the deliverable contract |
 | A costly or cross-system choice needs challenge | Create a `REV-*` review using one to three relevant lenses |
 | Observations already exist | Separate observation from interpretation, show limitations, and ask for the resulting decision |
 | The user chose a direction | Update affected artifacts and consistency-check them automatically |
+| An approved system needs a separately maintained implementation contract | Create or update one focused `SYS-*` specification |
 
 ## Artifact policy
 
 Read [references/artifact-recipes.md](references/artifact-recipes.md) for exact contents and naming.
 
-- `design.md` is the only initial artifact. It is the compact source of truth for the experience, loop, direction, constraints, assumptions, and next decision.
+- `design.md` is the only initial working artifact and compact source of truth; it is not a mandatory final filename. If the user requests a GDD, brief, or plan, use the requested path or a clear name such as `game-design/GDD.md`.
+- A requested handoff does not trigger one file per reasoning step. Separate numbered artifacts remain optional internal working documents.
 - `decisions.md` is optional. Create it when alternatives and rationale would otherwise be lost, or when a prior decision is revised.
 - `references.md` is optional. Create it when cited research becomes important enough to reuse or revisit.
 - `tests/TST-NNN-*.md` appears only when a real uncertainty is being tested or observations need recording.
@@ -78,15 +101,16 @@ Read [references/artifact-recipes.md](references/artifact-recipes.md) for exact 
 - Keep rejected options and why they were rejected when that history can prevent repeated debate.
 - Do not create scorecards, gate tables, confirmation pages, reviewer packets, evidence ledgers, or dashboards unless the user requests one for a concrete operating purpose.
 
-Use the included helpers when files should persist:
+Use the included helpers for an ongoing managed workspace, not merely to house a one-off handoff:
 
 ```text
+python '<skill-dir>/scripts/check_installation.py' --expect-version 0.1.1-beta
 python '<skill-dir>/scripts/init_design_project.py' --root '<project-root>' --name '<project name>'
 python '<skill-dir>/scripts/create_design_artifact.py' --root '<project-root>' <decision|reference|test|system|review> --name '<name>'
 python '<skill-dir>/scripts/check_design_workspace.py' --root '<project-root>'
 ```
 
-The workspace check is a consistency doctor, not a quality score. Resolve `<skill-dir>` from this file. Use `--directory <name>` consistently only when the user explicitly wants a workspace other than `game-design`.
+The installation check verifies path and lineage. The workspace check rejects incompatible legacy formats and checks mechanics; it is not a quality score. Resolve `<skill-dir>` from this file. Use `--directory <name>` consistently only when the user explicitly wants a workspace other than `game-design`.
 
 ## Focused tests
 
@@ -99,7 +123,7 @@ The workspace check is a consistency doctor, not a quality score. Resolve `<skil
 
 ## System specifications
 
-Create a `SYS-*` file only after the human approves the direction or explicitly requests implementation detail. Include:
+Create a `SYS-*` file only when the approved system needs a separately owned, reusable implementation contract or the human explicitly requests one. Include:
 
 - player purpose and relationship to the core loop;
 - scope, non-goals, inputs, outputs, ownership, and dependencies;
@@ -126,7 +150,11 @@ Before finishing a substantive turn:
 
 1. Check that the recommendation still serves the intended player experience and constraints.
 2. Check changed files for contradictions, stale names, broken references, and assumptions presented as facts.
-3. Apply all repetitive updates implied by the human's approved choice.
-4. Report the decision made or needed, evidence used or missing, files changed, and the next useful action.
+3. Trace the relevant ordinary and repeated player actions from input through feedback, consequence, and end state. Recalculate the quantitative claims actually present, such as geometry, formulas, encounter counts, session length, economy, or schedule; do not add systems merely to satisfy a checklist.
+   For tick-level claims, define when timestamps and ages are sampled, place every consumed accumulator in the update order, and use a one-tick tolerance unless an exact boundary is itself the decision.
+4. Replay at least one important authored sequence in order with the state it would really inherit. Confirm that its intended choice or lesson remains necessary, reachable, and observable after prior rewards, difficulty changes, failures, or timers. Independently replay every fallback or cut branch whose claimed result is used to justify readiness.
+5. For a requested handoff, confirm that the primary document stands on its own and contains no blank templates or process-only attachments.
+6. Apply all repetitive updates implied by the human's approved choice.
+7. Report the decision made or needed, evidence used or missing, files changed, and the next useful action.
 
 Do not expand the workflow merely to look rigorous. A short conversation plus one updated file is often the correct result.

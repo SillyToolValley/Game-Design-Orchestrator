@@ -1,0 +1,25 @@
+{
+    "schema_version":  1,
+    "version":  "0.1.1-beta",
+    "contract_id":  "human-led-deliverable-first-v1",
+    "files":  {
+                  "agents/openai.yaml":  "c56ae425744dac84c7ad6b49161fdd88f9ebf437d088c4c5f842355c1909d794",
+                  "assets/templates/decisions.md.tmpl":  "e9a986413c11a9c931abf9ed10fcf5e65ef6c410442414ddf2d03b172a5054dc",
+                  "assets/templates/design.md.tmpl":  "9c5e215a957573103c66562fb5eebe3f6952059ed7c01aa6ffde869751ef5d85",
+                  "assets/templates/references.md.tmpl":  "7d885c46818240098730a521db9392f44addb55af60f07f76aa8415dc00377b5",
+                  "assets/templates/review.md.tmpl":  "b25dc17f12ade69ce9390a5c4c4b377779916f62fa742604c77a6452fea8cc79",
+                  "assets/templates/system-spec.md.tmpl":  "c06305fc8c48dcbd4938a95592fc2cc3aa5669ad457c6f122b4f865254d95846",
+                  "assets/templates/test-card.md.tmpl":  "f2c33bce441c4bb89cfa6ae09dbe9097a2aabc2228708d6ea0250dce260dd228",
+                  "references/artifact-recipes.md":  "1243fa3390d9b4222109966373da0380fcbbe857e7b3e99363045d7f925266a9",
+                  "references/practical-deliverables.md":  "9109e2fc7e22cae88e30a92b8b9aaf959348ed0b674cc399c48c0887df3355c4",
+                  "references/research-and-comparables.md":  "c7a552244d66538298c126b89d4ed1581b55920a688cb16fc1a68574913d7fd7",
+                  "references/review-lenses.md":  "bee6ebd995b7adda43ecb483f9cebe8a5db2bbfd34dee72caf897436dc6daf4a",
+                  "scripts/check_design_workspace.py":  "637ab3053824fe9609f066a598d5a1662c24f958ca571d1fb765f79c5826d756",
+                  "scripts/check_installation.py":  "163b465357e3caa9408c47f763b873b1a89c58bb2c3ca0414898ac360d8cae4e",
+                  "scripts/create_design_artifact.py":  "b838036efe137b3a6760db5052b5e497f2b59ed36aceb1be7701ee99ddc384c2",
+                  "scripts/init_design_project.py":  "acdecfacc3f600b0033e419e98bbd9f62261d5f058ab988647359a4a858efc97",
+                  "scripts/workspace.py":  "58453d731242d73ed89103ee9150a40b8be73e17c38b5441759a72a06c2892dd",
+                  "SKILL.md":  "088bec0c055d7cbd7024d9a8e9a406f76346ab862bf65d1a7ccdcd7b17fad67d",
+                  "tests/test_orchestrator.py":  "2c091f2b0452ff77c67226ad9ec73842fffcbe05389701e32e475041934d2545"
+              }
+}

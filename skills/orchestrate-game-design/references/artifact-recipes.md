@@ -19,6 +19,11 @@ game-design/
 
 Allocate the next unused three-digit ID within each folder. Use lowercase hyphenated slugs. Do not renumber existing files.
 
+## Working source versus requested handoff
+
+The workspace above is for ongoing design work. A user-requested GDD, brief, or production plan is a reader-facing handoff and may use a clear requested filename such as `GDD.md`. Default that handoff to one primary document and follow [practical-deliverables.md](practical-deliverables.md). Do not export every internal decision, test idea, or review into a companion file.
+
+
 ## `design.md`
 
 Create this first and keep it compact. It should answer:
@@ -31,7 +36,7 @@ Create this first and keep it compact. It should answer:
 - Which assumptions or questions could still change the direction?
 - What decision or useful action comes next?
 
-Update it when the chosen direction changes. Do not turn it into a complete encyclopedia.
+Update it when the chosen direction changes. Compact means omitting irrelevant detail, not omitting rules needed for the current decision or build. When a finished handoff is requested, expand the primary handoff to the depth its reader needs.
 
 ## `decisions.md`
 
@@ -47,7 +52,7 @@ Create when uncertainty can change a decision and there is a concrete way to lea
 
 ## `SYS-*`
 
-Create when an approved design needs implementation precision. Keep one coherent system per file. Include player purpose, scope, dependencies, rules and state changes, parameters, feedback, edge cases, worked examples, acceptance examples, and unresolved decisions. Update the same file as the system evolves.
+Create only when an approved system needs a separately maintained implementation contract. Keep one coherent system per file. Include player purpose, scope, dependencies, rules and state changes, parameters, feedback, edge cases, worked examples, acceptance examples, and unresolved decisions. Update the same file as the system evolves.
 
 ## `REV-*`
 
@@ -61,3 +66,4 @@ Create only when a costly, cross-system, hard-to-reverse, or especially uncertai
 - Label unsupported values and predictions as assumptions.
 - When a test or review changes the direction, update `design.md` and the affected `SYS-*` files in the same pass.
 - End with a short change summary and the next unresolved choice.
+- Do not turn reasoning steps into files unless each file has a distinct reader or ongoing operating use.

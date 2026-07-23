@@ -20,7 +20,9 @@ from pathlib import Path
 from typing import Any, Iterator
 
 
-VERSION = "0.1.0-beta"
+VERSION = "0.1.1-beta"
+CONTRACT_ID = "human-led-deliverable-first-v1"
+MIGRATABLE_TOOL_VERSION = "0.1.0-beta"
 STATE_SCHEMA_VERSION = 1
 DEFAULT_DIRECTORY = "game-design"
 KINDS = ("decision", "reference", "test", "system", "review")
@@ -37,6 +39,57 @@ MARKER_PATTERN = re.compile(
     r"<!--\s*gdo:artifact\s+type=(decision|reference|test|system|review)\s+"
     r"id=((?:DEC|REF|TST|SYS|REV)-\d{3,})\s*-->"
 )
+LEGACY_STATE_KEYS = frozenset({"hypothesis", "prototype", "evidence"})
+
+
+def _read_json_dict(path: Path) -> dict[str, Any] | None:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (FileNotFoundError, OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def legacy_workspace_indicators(target: Path) -> list[str]:
+    """Return structural fingerprints of the retired governance workspace."""
+
+    indicators: list[str] = []
+    legacy_state = _read_json_dict(target / "project-state.json")
+    if legacy_state is not None and legacy_state.get("schema_version") == 2:
+        next_ids = legacy_state.get("next_ids")
+        if (
+            isinstance(next_ids, dict)
+            and LEGACY_STATE_KEYS.issubset(next_ids)
+        ) or {"stage", "review_mode"}.issubset(legacy_state):
+            indicators.append("project-state.json")
+
+    legacy_config = _read_json_dict(target / "design-config.json")
+    if legacy_config is not None:
+        workflow = legacy_config.get("workflow")
+        has_gates = isinstance(workflow, dict) and isinstance(
+            workflow.get("enabled_gates"), list
+        )
+        if (
+            has_gates
+            and isinstance(legacy_config.get("evidence_kinds"), list)
+            and isinstance(legacy_config.get("test_types"), list)
+        ):
+            indicators.append("design-config.json")
+    return indicators
+
+
+def reject_legacy_workspace(target: Path) -> None:
+    indicators = legacy_workspace_indicators(target)
+    if not indicators:
+        return
+    joined = ", ".join(indicators)
+    raise WorkspaceError(
+        "Incompatible legacy governance workspace detected "
+        f"({joined}). Do not mix it with this release or continue its audit/gate "
+        "hierarchy. Treat its creative prose as source material and create a clean "
+        "reader-facing design workspace."
+    )
+
 
 
 class WorkspaceError(ValueError):
@@ -187,6 +240,7 @@ def initial_state(project_name: str) -> dict[str, Any]:
     return {
         "schema_version": STATE_SCHEMA_VERSION,
         "tool_version": VERSION,
+        "contract_id": CONTRACT_ID,
         "project_name": project_name,
         "next_ids": {kind: 1 for kind in KINDS},
         "updated_at": date.today().isoformat(),
@@ -202,8 +256,27 @@ def validate_state(payload: dict[str, Any], source: Path | str) -> dict[str, Any
     if not isinstance(project_name, str) or not project_name.strip():
         raise WorkspaceError(f"{source}: project_name must be nonempty text.")
     tool_version = payload.get("tool_version")
-    if not isinstance(tool_version, str) or not tool_version.strip():
-        raise WorkspaceError(f"{source}: tool_version must be nonempty text.")
+    if tool_version != VERSION:
+        migration_hint = ""
+        if (
+            tool_version == MIGRATABLE_TOOL_VERSION
+            and payload.get("contract_id") is None
+        ):
+            migration_hint = (
+                " Run init_design_project.py with --migrate before modifying "
+                "this workspace."
+            )
+        raise WorkspaceError(
+            f"{source}: tool_version is {tool_version!r}, expected {VERSION!r}. "
+            "Run this release's workspace checker before modifying the project; "
+            "automatic version rewriting is disabled."
+            + migration_hint
+        )
+    contract_id = payload.get("contract_id")
+    if contract_id != CONTRACT_ID:
+        raise WorkspaceError(
+            f"{source}: contract_id is {contract_id!r}, expected {CONTRACT_ID!r}."
+        )
     next_ids = payload.get("next_ids")
     if not isinstance(next_ids, dict):
         raise WorkspaceError(f"{source}: next_ids must be an object.")
@@ -224,6 +297,47 @@ def validate_state(payload: dict[str, Any], source: Path | str) -> dict[str, Any
 def load_state(target: Path) -> dict[str, Any]:
     path = target / ".gdo" / "state.json"
     return validate_state(load_json_object(path, target), path)
+
+
+def migrate_official_state(target: Path) -> bool:
+    """Explicitly migrate an untouched 0.1.0-beta state; return whether changed."""
+
+    path = target / ".gdo" / "state.json"
+    payload = load_json_object(path, target)
+    try:
+        validate_state(payload, path)
+    except WorkspaceError:
+        pass
+    else:
+        return False
+
+    official_keys = {
+        "schema_version",
+        "tool_version",
+        "project_name",
+        "next_ids",
+        "updated_at",
+    }
+    if (
+        set(payload) != official_keys
+        or payload.get("schema_version") != STATE_SCHEMA_VERSION
+        or payload.get("tool_version") != MIGRATABLE_TOOL_VERSION
+    ):
+        raise WorkspaceError(
+            f"{path}: cannot migrate automatically. --migrate accepts only an "
+            f"unmodified official {MIGRATABLE_TOOL_VERSION} state."
+        )
+
+    migrated = dict(payload)
+    migrated["tool_version"] = VERSION
+    migrated["contract_id"] = CONTRACT_ID
+    migrated["migration"] = {
+        "from_tool_version": MIGRATABLE_TOOL_VERSION,
+        "migrated_at": date.today().isoformat(),
+    }
+    validate_state(migrated, path)
+    atomic_json(path, migrated, target)
+    return True
 
 
 def slugify(value: str, fallback: str = "artifact") -> str:
