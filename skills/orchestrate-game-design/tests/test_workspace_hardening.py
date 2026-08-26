@@ -699,8 +699,21 @@ with workspace_lock(target, root):
             write_attempts: list[OSError | None] = []
             original_path_open = Path.open
 
+            def canonical_candidate(path: Path) -> Path:
+                """Canonicalize an existing parent while allowing a new leaf."""
+
+                parent = workspace._canonical_existing_path(path.parent)
+                return Path(
+                    workspace._normalized_path_text(
+                        os.fspath(parent / path.name)
+                    )
+                )
+
             def hooked_path_open(path: Path, *args: object, **kwargs: object) -> Any:
-                if path == write_path and not write_attempts:
+                if (
+                    canonical_candidate(path) == canonical_candidate(write_path)
+                    and not write_attempts
+                ):
                     attempt_swap(write_parent, parked_write, write_attempts)
                 return original_path_open(path, *args, **kwargs)
 

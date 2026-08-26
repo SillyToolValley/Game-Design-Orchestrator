@@ -645,7 +645,11 @@ class ForwardEvalFixtureTests(unittest.TestCase):
 
                 def swap_before_open(path: Path) -> int:
                     nonlocal swapped
-                    if not swapped and path == destination:
+                    if (
+                        not swapped
+                        and path.resolve(strict=False)
+                        == destination.resolve(strict=False)
+                    ):
                         destination.rename(parked_destination)
                         result = subprocess.run(
                             [
@@ -685,7 +689,11 @@ class ForwardEvalFixtureTests(unittest.TestCase):
                     path: Path,
                 ) -> int:
                     nonlocal swapped
-                    if not swapped and path == destination:
+                    if (
+                        not swapped
+                        and path.resolve(strict=False)
+                        == destination.resolve(strict=False)
+                    ):
                         destination.rename(parked_destination)
                         destination.symlink_to(outside, target_is_directory=True)
                         swapped = True
@@ -739,7 +747,11 @@ class ForwardEvalFixtureTests(unittest.TestCase):
 
                 def swap_before_open(path: Path) -> int:
                     nonlocal swapped
-                    if not swapped and path == parent:
+                    if (
+                        not swapped
+                        and path.resolve(strict=False)
+                        == parent.resolve(strict=False)
+                    ):
                         parent.rename(parked_parent)
                         result = subprocess.run(
                             [
@@ -774,7 +786,11 @@ class ForwardEvalFixtureTests(unittest.TestCase):
 
                 def swap_before_open(path: Path, created: os.stat_result) -> int:
                     nonlocal swapped
-                    if not swapped and path == parent:
+                    if (
+                        not swapped
+                        and path.resolve(strict=False)
+                        == parent.resolve(strict=False)
+                    ):
                         parent.rename(parked_parent)
                         parent.symlink_to(outside, target_is_directory=True)
                         swapped = True
