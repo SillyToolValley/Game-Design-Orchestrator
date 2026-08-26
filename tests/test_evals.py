@@ -638,6 +638,7 @@ class ForwardEvalFixtureTests(unittest.TestCase):
             parked_destination = root / "prepared-original"
             outside = root / "outside"
             outside.mkdir()
+            expected_destination = destination.resolve(strict=False)
             swapped = False
 
             if os.name == "nt":
@@ -718,7 +719,10 @@ class ForwardEvalFixtureTests(unittest.TestCase):
                             destination,
                         )
                 self.assertTrue(swapped, "the destination race hook did not run")
-                self.assertIn(str(destination), str(raised.exception))
+                self.assertIn(
+                    os.path.normcase(os.fspath(expected_destination)),
+                    os.path.normcase(str(raised.exception)),
+                )
                 self.assertFalse(
                     (outside / "GDD.md").exists(),
                     "a swapped destination must not receive the fixture",
@@ -740,6 +744,7 @@ class ForwardEvalFixtureTests(unittest.TestCase):
             outside = root / "outside"
             parent.mkdir()
             outside.mkdir()
+            expected_parent = parent.resolve(strict=False)
             swapped = False
 
             if os.name == "nt":
@@ -815,7 +820,10 @@ class ForwardEvalFixtureTests(unittest.TestCase):
                             destination,
                         )
                 self.assertTrue(swapped, "the parent race hook did not run")
-                self.assertIn(str(parent), str(raised.exception))
+                self.assertIn(
+                    os.path.normcase(os.fspath(expected_parent)),
+                    os.path.normcase(str(raised.exception)),
+                )
                 self.assertFalse((outside / "prepared").exists())
                 self.assertFalse((outside / "GDD.md").exists())
             finally:
