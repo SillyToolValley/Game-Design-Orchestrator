@@ -267,6 +267,73 @@ class ForwardEvalFixtureTests(unittest.TestCase):
                 [item["path"] for item in packet["baseline_files"]],
             )
 
+    def test_prepare_accepts_a_destination_below_a_resolvable_parent_alias(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="gdo-eval-parent-alias-") as temporary:
+            root = Path(temporary)
+            real_parent = root / "canonical-parent"
+            alias_parent = root / "parent-alias"
+            real_parent.mkdir()
+
+            if os.name == "nt":
+                result = subprocess.run(
+                    [
+                        "cmd.exe",
+                        "/d",
+                        "/c",
+                        "mklink",
+                        "/J",
+                        str(alias_parent),
+                        str(real_parent),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                if result.returncode != 0:
+                    self.skipTest(f"directory junctions unavailable: {result.stderr}")
+            else:
+                alias_parent.symlink_to(real_parent, target_is_directory=True)
+
+            requested_destination = alias_parent / "prepared"
+            canonical_destination = real_parent.resolve(strict=True) / "prepared"
+            try:
+                packet = self.validator.prepare_case(
+                    self.catalog,
+                    "review-before-rewrite",
+                    requested_destination,
+                )
+                self.assertEqual(
+                    canonical_destination,
+                    Path(packet["prepared_project"]),
+                )
+                self.assertTrue((canonical_destination / "GDD.md").is_file())
+                self.assertTrue((requested_destination / "GDD.md").is_file())
+            finally:
+                if alias_parent.exists():
+                    if os.name == "nt":
+                        alias_parent.rmdir()
+                    else:
+                        alias_parent.unlink()
+
+    def test_handle_path_comparison_uses_the_resolved_existing_spelling(self) -> None:
+        resolved_spelling = Path(r"C:\Users\runneradmin\prepared")
+
+        class ShortNameAlias:
+            def __fspath__(self) -> str:
+                return r"C:\RUNNER~1\prepared"
+
+            def resolve(self, *, strict: bool) -> Path:
+                if not strict:
+                    raise AssertionError("existing handle paths must resolve strictly")
+                return resolved_spelling
+
+        self.assertEqual(
+            self.validator._normalized_windows_path_text(
+                os.fspath(resolved_spelling)
+            ),
+            self.validator._canonical_existing_path_text(ShortNameAlias()),
+        )
+
     def test_prepare_requires_a_destination_that_does_not_exist(self) -> None:
         with tempfile.TemporaryDirectory(prefix="gdo-eval-nonempty-") as temporary:
             root = Path(temporary)
@@ -607,34 +674,43 @@ class ForwardEvalFixtureTests(unittest.TestCase):
                     "_open_stable_windows_directory",
                     side_effect=swap_before_open,
                 )
+                expected_error = "^refusing linked prepared destination directory:"
             else:
-                original_open = self.validator._open_stable_posix_directory
+                original_open = self.validator._open_posix_child_directory
 
-                def swap_before_open(path: Path, created: os.stat_result) -> int:
+                def swap_before_open(
+                    parent_descriptor: int,
+                    name: str,
+                    created: os.stat_result,
+                    path: Path,
+                ) -> int:
                     nonlocal swapped
                     if not swapped and path == destination:
                         destination.rename(parked_destination)
                         destination.symlink_to(outside, target_is_directory=True)
                         swapped = True
-                    return original_open(path, created)
+                    return original_open(parent_descriptor, name, created, path)
 
                 patcher = mock.patch.object(
                     self.validator,
-                    "_open_stable_posix_directory",
+                    "_open_posix_child_directory",
                     side_effect=swap_before_open,
                 )
+                expected_error = "^could not secure newly created destination "
 
             try:
                 with patcher:
                     with self.assertRaisesRegex(
                         self.validator.ValidationError,
-                        "linked|changed|secure",
-                    ):
+                        expected_error,
+                    ) as raised:
                         self.validator.prepare_case(
                             self.catalog,
                             "review-before-rewrite",
                             destination,
                         )
+                self.assertTrue(swapped, "the destination race hook did not run")
+                self.assertIn(str(destination), str(raised.exception))
                 self.assertFalse(
                     (outside / "GDD.md").exists(),
                     "a swapped destination must not receive the fixture",
@@ -692,6 +768,7 @@ class ForwardEvalFixtureTests(unittest.TestCase):
                     "_open_stable_windows_directory",
                     side_effect=swap_before_open,
                 )
+                expected_error = "^refusing linked prepared destination directory:"
             else:
                 original_open = self.validator._open_stable_posix_directory
 
@@ -708,18 +785,21 @@ class ForwardEvalFixtureTests(unittest.TestCase):
                     "_open_stable_posix_directory",
                     side_effect=swap_before_open,
                 )
+                expected_error = "^could not secure prepared destination directory "
 
             try:
                 with patcher:
                     with self.assertRaisesRegex(
                         self.validator.ValidationError,
-                        "linked|changed|secure",
-                    ):
+                        expected_error,
+                    ) as raised:
                         self.validator.prepare_case(
                             self.catalog,
                             "review-before-rewrite",
                             destination,
                         )
+                self.assertTrue(swapped, "the parent race hook did not run")
+                self.assertIn(str(parent), str(raised.exception))
                 self.assertFalse((outside / "prepared").exists())
                 self.assertFalse((outside / "GDD.md").exists())
             finally:

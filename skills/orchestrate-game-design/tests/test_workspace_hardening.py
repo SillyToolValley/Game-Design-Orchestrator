@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -114,6 +115,45 @@ class WorkspaceHardeningTests(unittest.TestCase):
             outside = Path("\\\\?\\" + str(root.parent / "outside-game-design"))
             with self.assertRaises(workspace.WorkspaceError):
                 workspace.resolve_target(root, outside)
+
+    @unittest.skipUnless(os.name == "nt", "Windows kernel-object namespaces")
+    def test_windows_workspace_lock_uses_global_namespace_and_fails_closed(self) -> None:
+        import ctypes
+
+        with tempfile.TemporaryDirectory(prefix="gdo-global-lock-name-") as temporary:
+            root = Path(temporary).resolve()
+            expected_digest = hashlib.sha256(
+                os.fsencode(str(workspace._comparison_path(root)))
+            ).hexdigest()
+            expected_name = "Global\\GameDesignOrchestrator-" + expected_digest
+
+            self.assertEqual(
+                expected_name,
+                workspace._windows_workspace_mutex_name(root),
+            )
+
+            # This exercises CreateMutexW with the asserted name on Windows.
+            # The project-wide contention test below independently proves that
+            # a second process cannot bypass the same lock.
+            with workspace.workspace_lock(root / "game-design", root):
+                pass
+
+            denied_kernel32 = SimpleNamespace(
+                CreateMutexW=mock.Mock(return_value=0),
+                WaitForSingleObject=mock.Mock(),
+                ReleaseMutex=mock.Mock(),
+                CloseHandle=mock.Mock(),
+            )
+            with (
+                mock.patch.object(ctypes, "WinDLL", return_value=denied_kernel32),
+                mock.patch.object(ctypes, "get_last_error", return_value=5),
+                self.assertRaisesRegex(OSError, "will not fall back"),
+            ):
+                with workspace.workspace_lock(root / "game-design", root):
+                    self.fail("a denied Global mutex fell back to another lock")
+            denied_kernel32.CreateMutexW.assert_called_once_with(
+                None, False, expected_name
+            )
 
     @unittest.skipIf(os.name == "nt", "POSIX file-descriptor semantics")
     def test_posix_read_rejects_fifo_and_different_inode_swaps(self) -> None:

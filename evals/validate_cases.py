@@ -913,6 +913,12 @@ def _normalized_windows_path_text(value: str) -> str:
     return normalized
 
 
+def _canonical_existing_path_text(path: Path) -> str:
+    """Return the canonical spelling used to compare an existing path to a handle."""
+
+    return _normalized_windows_path_text(os.fspath(path.resolve(strict=True)))
+
+
 def _close_windows_handle(handle: int) -> None:
     import ctypes
     from ctypes import wintypes
@@ -980,7 +986,7 @@ def _open_stable_windows_regular_file(path: Path) -> int:
         if get_final_path(handle, buffer, len(buffer), 0) == 0:
             error = ctypes.get_last_error()
             raise OSError(error, "Could not verify evaluator file.", str(path))
-        expected = _normalized_windows_path_text(os.path.abspath(os.fspath(path)))
+        expected = _canonical_existing_path_text(path)
         actual = _normalized_windows_path_text(buffer.value)
         if actual != expected:
             raise ValidationError(f"evaluator file changed while opening: {path}")
@@ -1027,7 +1033,7 @@ def _verify_windows_directory_handle(handle: int, path: Path) -> None:
         raise ValidationError(
             f"could not verify prepared destination directory {path}: {ctypes.WinError(error)}"
         )
-    expected = _normalized_windows_path_text(os.path.abspath(os.fspath(path)))
+    expected = _canonical_existing_path_text(path)
     actual = _normalized_windows_path_text(buffer.value)
     if actual != expected:
         raise ValidationError(f"prepared destination directory changed while held: {path}")
@@ -1452,33 +1458,41 @@ def prepare_case(
     requested_destination = Path(
         os.path.abspath(os.fspath(destination.expanduser()))
     )
+    try:
+        canonical_parent = requested_destination.parent.resolve(strict=True)
+    except FileNotFoundError as error:
+        raise ValidationError(
+            f"destination parent must already exist: {requested_destination.parent}"
+        ) from error
+    except (OSError, RuntimeError) as error:
+        raise ValidationError(
+            f"could not resolve destination parent {requested_destination.parent}: {error}"
+        ) from error
+
+    # Work from one canonical parent spelling from here onward. This accepts normal
+    # aliases such as macOS /var -> /private/var and Windows 8.3 names while the
+    # held-handle identity checks below still detect replacement races.
+    destination = canonical_parent / requested_destination.name
     destination_present = False
     try:
-        os.lstat(requested_destination)
+        os.lstat(destination)
     except FileNotFoundError:
         pass
     except OSError as error:
         raise ValidationError(
-            f"could not inspect destination {requested_destination}: {error}"
+            f"could not inspect destination {destination}: {error}"
         ) from error
     else:
         destination_present = True
-    try:
-        comparison_destination = requested_destination.resolve(strict=False)
-    except (OSError, RuntimeError) as error:
-        raise ValidationError(
-            f"could not resolve destination {requested_destination}: {error}"
-        ) from error
-    if _overlaps(comparison_destination, eval_root):
+    if _overlaps(destination, eval_root):
         raise ValidationError(
             "destination must not overlap the evaluator catalog and fixture root: "
             f"{eval_root}"
         )
     if destination_present:
         raise ValidationError(
-            f"destination must not already exist: {requested_destination}"
+            f"destination must not already exist: {destination}"
         )
-    destination = requested_destination
 
     baseline: list[dict[str, Any]] = []
     with _owned_destination(destination) as (root_descriptor, windows_handles):

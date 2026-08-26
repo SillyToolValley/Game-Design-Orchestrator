@@ -17,6 +17,7 @@ All notable changes to Game Design Orchestrator are documented here. Pre-1.0 bet
 - Clarify that automated coverage proves CLI and filesystem behavior, not cross-model design quality or broad independent designer adoption.
 - Keep the snapshot explicitly subordinate to the human-readable Markdown source of truth so context portability does not create a second design database.
 - Serialize managed-workspace readers and writers, and reject linked or replaced directory entries before workspace mutations.
+- Use one Windows `Global\` mutex per canonical project root so same-user commands coordinate across login and Remote Desktop sessions, and fail closed when that namespace is unavailable.
 - Require reproducible clean-checkout lineage and retained artifact hashes for forward-evaluation run records; metadata validation remains separate from behavioral scoring.
 - Reject Git replacement-object lineage, hidden cache inputs, portable path collisions, non-finite JSON numbers, boolean schema versions, and concurrent mixed-generation reads in evaluation and installation boundaries.
 - Keep interrupted-install cleanup safe on Python 3.10 when a stale staging entry is a Windows junction or another filesystem link.

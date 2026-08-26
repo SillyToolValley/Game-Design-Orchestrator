@@ -46,6 +46,7 @@ LEGACY_STATE_KEYS = frozenset({"hypothesis", "prototype", "evidence"})
 _POSIX_ROOT_LEASE: ContextVar[tuple[str, int, int] | None] = ContextVar(
     "gdo_posix_root_lease", default=None
 )
+_WINDOWS_MUTEX_PREFIX = "Global\\GameDesignOrchestrator-"
 
 
 def _read_json_dict(
@@ -147,6 +148,15 @@ def _comparison_path(path: Path) -> Path:
     """Return a resolved path spelling for containment and lock identity checks."""
 
     return Path(_normalized_path_text(os.fspath(path.resolve(strict=False))))
+
+
+def _windows_workspace_mutex_name(resolved_root: Path) -> str:
+    """Return the cross-session Windows mutex name for one project root."""
+
+    digest = hashlib.sha256(
+        os.fsencode(str(_comparison_path(resolved_root)))
+    ).hexdigest()
+    return _WINDOWS_MUTEX_PREFIX + digest
 
 
 def _lexical_comparison_path(path: Path) -> Path:
@@ -1031,10 +1041,7 @@ def workspace_lock(
         import ctypes
         from ctypes import wintypes
 
-        digest = hashlib.sha256(
-            os.fsencode(str(_comparison_path(resolved_root)))
-        ).hexdigest()
-        mutex_name = "Local\\GameDesignOrchestrator-" + digest
+        mutex_name = _windows_workspace_mutex_name(resolved_root)
         kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
         create_mutex = kernel32.CreateMutexW
         create_mutex.argtypes = (wintypes.LPVOID, wintypes.BOOL, wintypes.LPCWSTR)
@@ -1052,7 +1059,11 @@ def workspace_lock(
         handle = create_mutex(None, False, mutex_name)
         if not handle:
             error = ctypes.get_last_error()
-            raise OSError(error, "Could not create the workspace mutex.")
+            raise OSError(
+                error,
+                "Could not create the required cross-session Global workspace "
+                "mutex. GDO will not fall back to a session-local lock.",
+            )
         acquired = False
         try:
             wait_result = wait_for_single_object(handle, round(timeout * 1000))
