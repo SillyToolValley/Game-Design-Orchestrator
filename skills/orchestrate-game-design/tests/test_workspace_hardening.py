@@ -94,6 +94,169 @@ def restore_swapped_directory(directory: Path, parked: Path) -> None:
 
 
 class WorkspaceHardeningTests(unittest.TestCase):
+    def test_windows_handle_comparison_canonicalizes_8dot3_spelling(self) -> None:
+        long_spelling = Path(r"C:\Users\runneradmin\workspace")
+
+        class ShortNameAlias:
+            def __fspath__(self) -> str:
+                return r"C:\Users\RUNNER~1\workspace"
+
+            def resolve(self, *, strict: bool) -> Path:
+                if not strict:
+                    raise AssertionError(
+                        "an existing handle path must resolve strictly"
+                    )
+                return long_spelling
+
+        self.assertEqual(
+            Path(workspace._normalized_path_text(os.fspath(long_spelling))),
+            workspace._canonical_existing_path(ShortNameAlias()),
+        )
+
+    @unittest.skipUnless(os.name == "nt", "Windows 8.3 path aliases")
+    def test_windows_8dot3_alias_matches_open_directory_handle(self) -> None:
+        import ctypes
+        from ctypes import wintypes
+
+        with tempfile.TemporaryDirectory(prefix="gdo-long-path-alias-") as temporary:
+            directory = Path(temporary) / "workspace-directory-with-a-long-name"
+            directory.mkdir()
+            get_short_path = ctypes.WinDLL(
+                "kernel32", use_last_error=True
+            ).GetShortPathNameW
+            get_short_path.argtypes = (
+                wintypes.LPCWSTR,
+                wintypes.LPWSTR,
+                wintypes.DWORD,
+            )
+            get_short_path.restype = wintypes.DWORD
+            needed = get_short_path(str(directory), None, 0)
+            if needed == 0:
+                self.skipTest("8.3 aliases are unavailable on this volume")
+            buffer = ctypes.create_unicode_buffer(needed + 1)
+            if get_short_path(str(directory), buffer, len(buffer)) == 0:
+                self.skipTest("8.3 aliases are unavailable on this volume")
+            alias = Path(buffer.value)
+            if workspace._lexical_comparison_path(alias) == (
+                workspace._lexical_comparison_path(directory)
+            ):
+                self.skipTest("this directory has no distinct 8.3 alias")
+
+            handle = workspace._open_stable_windows_directory(alias)
+            try:
+                self.assertEqual(
+                    workspace._canonical_existing_path(alias),
+                    workspace._comparison_path(directory),
+                )
+            finally:
+                workspace._close_windows_handle(handle)
+
+            (directory / "game-design").mkdir()
+            alias_target = alias / "game-design"
+            alias_artifact = alias_target / "short-alias.md"
+            with workspace.workspace_lock(alias_target, alias):
+                self.assertTrue(
+                    workspace.write_new(
+                        alias_artifact, "short alias\n", alias_target, alias
+                    )
+                )
+            self.assertEqual(
+                (directory / "game-design" / alias_artifact.name).read_text(
+                    encoding="utf-8"
+                ),
+                "short alias\n",
+            )
+
+    @unittest.skipUnless(os.name == "nt", "Windows junction behavior")
+    def test_windows_root_lease_rejects_swapped_ancestor_junction(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="gdo-root-junction-lease-") as temporary:
+            parent = Path(temporary)
+            original_parent = parent / "original"
+            outside_parent = parent / "outside"
+            alias_parent = parent / "alias"
+            original_root = original_parent / "project"
+            outside_root = outside_parent / "project"
+            original_root.mkdir(parents=True)
+            (outside_root / "game-design").mkdir(parents=True)
+            create_junction(alias_parent, original_parent)
+
+            root = alias_parent / "project"
+            target = root / "game-design"
+            target.mkdir()
+            artifact = target / "escaped.md"
+
+            with workspace.workspace_lock(target, root):
+                os.rmdir(alias_parent)
+                create_junction(alias_parent, outside_parent)
+                try:
+                    with self.assertRaisesRegex(
+                        workspace.WorkspaceError, "Project root changed"
+                    ):
+                        workspace.write_new(
+                            artifact, "must stay inside\n", target, root
+                        )
+                finally:
+                    os.rmdir(alias_parent)
+                    create_junction(alias_parent, original_parent)
+
+            self.assertFalse((outside_root / "game-design" / artifact.name).exists())
+            self.assertFalse(
+                (original_root / "game-design" / artifact.name).exists()
+            )
+
+    @unittest.skipUnless(os.name == "nt", "Windows junction behavior")
+    def test_windows_handle_path_closes_post_verification_junction_race(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="gdo-root-junction-race-") as temporary:
+            parent = Path(temporary)
+            original_parent = parent / "original"
+            outside_parent = parent / "outside"
+            alias_parent = parent / "alias"
+            original_root = original_parent / "project"
+            outside_root = outside_parent / "project"
+            (original_root / "game-design").mkdir(parents=True)
+            (outside_root / "game-design").mkdir(parents=True)
+            create_junction(alias_parent, original_parent)
+
+            root = alias_parent / "project"
+            target = root / "game-design"
+            artifact = target / "bound-to-lease.md"
+            original_require = workspace._require_windows_root_lease
+            swapped = False
+
+            def swap_after_verification(handle: int) -> Path:
+                nonlocal swapped
+                stable_root = original_require(handle)
+                if not swapped:
+                    os.rmdir(alias_parent)
+                    create_junction(alias_parent, outside_parent)
+                    swapped = True
+                return stable_root
+
+            try:
+                with workspace.workspace_lock(target, root):
+                    with mock.patch.object(
+                        workspace,
+                        "_require_windows_root_lease",
+                        side_effect=swap_after_verification,
+                    ):
+                        self.assertTrue(
+                            workspace.write_new(
+                                artifact, "locked root\n", target, root
+                            )
+                        )
+            finally:
+                if swapped:
+                    os.rmdir(alias_parent)
+                    create_junction(alias_parent, original_parent)
+
+            self.assertEqual(
+                (original_root / "game-design" / artifact.name).read_text(
+                    encoding="utf-8"
+                ),
+                "locked root\n",
+            )
+            self.assertFalse((outside_root / "game-design" / artifact.name).exists())
+
     @unittest.skipUnless(os.name == "nt", "Windows namespace behavior")
     def test_extended_windows_paths_have_stable_containment(self) -> None:
         with tempfile.TemporaryDirectory(prefix="gdo-extended-path-") as temporary:
@@ -301,6 +464,35 @@ class WorkspaceHardeningTests(unittest.TestCase):
                 editor.truncate()
             self.assertEqual(
                 workspace.read_workspace_text(source, target, root), original_text
+            )
+
+    @unittest.skipIf(os.name == "nt", "POSIX inode lease semantics")
+    def test_posix_lock_lease_accepts_a_symlinked_ancestor_alias(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="gdo-posix-root-alias-") as temporary:
+            parent = Path(temporary)
+            canonical_parent = parent / "canonical"
+            alias_parent = parent / "alias"
+            canonical_parent.mkdir()
+            alias_parent.symlink_to(canonical_parent, target_is_directory=True)
+
+            root = alias_parent / "project"
+            root.mkdir()
+            target = root / "game-design"
+            artifact = target / "alias-safe.md"
+
+            with workspace.workspace_lock(target, root):
+                self.assertTrue(
+                    workspace.write_new(artifact, "alias-safe\n", target, root)
+                )
+                self.assertEqual(
+                    workspace.read_workspace_text(artifact, target, root),
+                    "alias-safe\n",
+                )
+
+            self.assertEqual(
+                (canonical_parent / "project" / "game-design" / "alias-safe.md")
+                .read_text(encoding="utf-8"),
+                "alias-safe\n",
             )
 
     @unittest.skipIf(os.name == "nt", "POSIX inode lease semantics")

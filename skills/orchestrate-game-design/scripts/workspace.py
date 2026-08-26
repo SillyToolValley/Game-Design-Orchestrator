@@ -46,6 +46,9 @@ LEGACY_STATE_KEYS = frozenset({"hypothesis", "prototype", "evidence"})
 _POSIX_ROOT_LEASE: ContextVar[tuple[str, int, int] | None] = ContextVar(
     "gdo_posix_root_lease", default=None
 )
+_WINDOWS_ROOT_LEASE: ContextVar[tuple[str, int, int] | None] = ContextVar(
+    "gdo_windows_root_lease", default=None
+)
 _WINDOWS_MUTEX_PREFIX = "Global\\GameDesignOrchestrator-"
 
 
@@ -165,6 +168,21 @@ def _lexical_comparison_path(path: Path) -> Path:
     return Path(_normalized_path_text(os.path.abspath(os.fspath(path))))
 
 
+def _canonical_existing_path(path: Path) -> Path:
+    """Return the canonical spelling used to compare an entry to its handle.
+
+    Windows may preserve an 8.3 spelling such as ``RUNNER~1`` in an absolute
+    lexical path even though ``GetFinalPathNameByHandleW`` reports the long
+    spelling for the same entry.  Resolving the already-open, non-reparse entry
+    makes those equivalent spellings comparable without weakening the handle
+    identity check.
+    """
+
+    return Path(
+        _normalized_path_text(os.fspath(path.resolve(strict=True)))
+    )
+
+
 def resolve_target(root: Path, directory: str | Path = DEFAULT_DIRECTORY) -> Path:
     """Resolve a design directory and reject paths outside the project root."""
 
@@ -251,8 +269,11 @@ def _require_posix_root_lease(path: Path, opened: os.stat_result) -> None:
     if lease is None:
         return
     expected_path, expected_device, expected_inode = lease
+    # Compare canonical spellings so stable ancestor aliases such as macOS
+    # ``/var`` -> ``/private/var`` do not invalidate the lease.  The device and
+    # inode checks below remain the authority for detecting a replaced root.
     if (
-        os.fspath(_lexical_comparison_path(path)) != expected_path
+        os.fspath(_comparison_path(path)) != expected_path
         or opened.st_dev != expected_device
         or opened.st_ino != expected_inode
     ):
@@ -271,7 +292,9 @@ def _close_windows_handle(handle: int) -> None:
     close_handle(handle)
 
 
-def _verify_windows_handle_path(handle: int, path: Path) -> None:
+def _windows_final_handle_path(handle: int) -> Path:
+    """Return the normalized filesystem path of an already-open handle."""
+
     import ctypes
     from ctypes import wintypes
 
@@ -288,13 +311,75 @@ def _verify_windows_handle_path(handle: int, path: Path) -> None:
     needed = get_final_path(handle, None, 0, 0)
     if needed == 0:
         error = ctypes.get_last_error()
-        raise OSError(error, "Could not verify workspace entry.", str(path))
+        raise OSError(error, "Could not verify workspace entry handle.")
     buffer = ctypes.create_unicode_buffer(needed + 1)
     if get_final_path(handle, buffer, len(buffer), 0) == 0:
         error = ctypes.get_last_error()
-        raise OSError(error, "Could not verify workspace entry.", str(path))
-    if Path(_normalized_path_text(buffer.value)) != _lexical_comparison_path(path):
+        raise OSError(error, "Could not verify workspace entry handle.")
+    return Path(_normalized_path_text(buffer.value))
+
+
+def _windows_handle_identity(handle: int) -> tuple[int, int]:
+    """Return a volume-qualified Windows file identity for an open handle."""
+
+    import ctypes
+    from ctypes import wintypes
+
+    class ByHandleFileInformation(ctypes.Structure):
+        _fields_ = (
+            ("file_attributes", wintypes.DWORD),
+            ("creation_time", wintypes.FILETIME),
+            ("last_access_time", wintypes.FILETIME),
+            ("last_write_time", wintypes.FILETIME),
+            ("volume_serial_number", wintypes.DWORD),
+            ("file_size_high", wintypes.DWORD),
+            ("file_size_low", wintypes.DWORD),
+            ("number_of_links", wintypes.DWORD),
+            ("file_index_high", wintypes.DWORD),
+            ("file_index_low", wintypes.DWORD),
+        )
+
+    get_information = ctypes.WinDLL(
+        "kernel32", use_last_error=True
+    ).GetFileInformationByHandle
+    get_information.argtypes = (
+        wintypes.HANDLE,
+        ctypes.POINTER(ByHandleFileInformation),
+    )
+    get_information.restype = wintypes.BOOL
+    information = ByHandleFileInformation()
+    if not get_information(handle, ctypes.byref(information)):
+        error = ctypes.get_last_error()
+        raise OSError(error, "Could not identify workspace entry handle.")
+    file_index = (
+        int(information.file_index_high) << 32
+    ) | int(information.file_index_low)
+    return int(information.volume_serial_number), file_index
+
+
+def _verify_windows_handle_path(handle: int, path: Path) -> None:
+    if _windows_final_handle_path(handle) != _canonical_existing_path(path):
         raise WorkspaceError(f"Workspace entry changed while opening: {path}.")
+
+
+def _require_windows_root_lease(handle: int) -> Path:
+    """Require an open root to be the exact root held by workspace_lock."""
+
+    opened_path = _windows_final_handle_path(handle)
+    lease = _WINDOWS_ROOT_LEASE.get()
+    if lease is None:
+        return opened_path
+    expected_path, expected_volume, expected_file_index = lease
+    opened_volume, opened_file_index = _windows_handle_identity(handle)
+    if (
+        os.fspath(opened_path) != expected_path
+        or opened_volume != expected_volume
+        or opened_file_index != expected_file_index
+    ):
+        raise WorkspaceError(
+            "Project root changed after the project-wide workspace lock was acquired."
+        )
+    return opened_path
 
 
 def _open_stable_windows_directory(path: Path) -> int:
@@ -402,7 +487,7 @@ def stable_workspace_directory(
     coordination_root: Path,
     *,
     create: bool,
-) -> Iterator[int | None]:
+) -> Iterator[int | Path]:
     """Hold a non-reparse directory chain for one filesystem operation.
 
     A POSIX project-lock lease rejects a replacement root tree. Directory file
@@ -419,9 +504,14 @@ def stable_workspace_directory(
 
     if os.name == "nt":
         handles: list[int] = []
-        current = root_path
         try:
-            handles.append(_open_stable_windows_directory(current))
+            root_handle = _open_stable_windows_directory(root_path)
+            handles.append(root_handle)
+            # The handle-derived path, not a fresh resolution of the caller's
+            # spelling, is the stable authority for every descendant. This
+            # both accepts 8.3 aliases and prevents an ancestor junction swap
+            # from redirecting later opens or mutations into another tree.
+            current = _require_windows_root_lease(root_handle)
             for part in relative.parts:
                 current = current / part
                 try:
@@ -435,7 +525,7 @@ def stable_workspace_directory(
                         pass
                     handle = _open_stable_windows_directory(current)
                 handles.append(handle)
-            yield None
+            yield current
         finally:
             for handle in reversed(handles):
                 _close_windows_handle(handle)
@@ -474,11 +564,11 @@ def stable_workspace_directory(
 
 
 def _regular_metadata_at(
-    path: Path, parent_descriptor: int | None
+    path: Path, parent_descriptor: int | Path
 ) -> os.stat_result | None:
     try:
-        if parent_descriptor is None:
-            metadata = os.lstat(path)
+        if isinstance(parent_descriptor, Path):
+            metadata = os.lstat(parent_descriptor / path.name)
         else:
             metadata = os.stat(
                 path.name,
@@ -499,10 +589,11 @@ def read_workspace_text(path: Path, target: Path, coordination_root: Path) -> st
         before = _regular_metadata_at(path, parent_descriptor)
         if before is None:
             raise FileNotFoundError(path)
-        if parent_descriptor is None:
+        if isinstance(parent_descriptor, Path):
             import msvcrt
 
-            windows_handle = _open_stable_windows_regular_file(path)
+            stable_path = parent_descriptor / path.name
+            windows_handle = _open_stable_windows_regular_file(stable_path)
             try:
                 descriptor = msvcrt.open_osfhandle(
                     windows_handle, os.O_RDONLY | getattr(os, "O_BINARY", 0)
@@ -521,7 +612,7 @@ def read_workspace_text(path: Path, target: Path, coordination_root: Path) -> st
                     )
                 text = handle.read()
                 opened_after = os.fstat(handle.fileno())
-                current_after = os.lstat(path)
+                current_after = os.lstat(stable_path)
                 if (
                     not stat.S_ISREG(opened_after.st_mode)
                     or not stat.S_ISREG(current_after.st_mode)
@@ -592,8 +683,10 @@ def write_new(
         if _regular_metadata_at(path, parent_descriptor) is not None:
             return False
         try:
-            if parent_descriptor is None:
-                handle = path.open("x", encoding="utf-8", newline="\n")
+            if isinstance(parent_descriptor, Path):
+                handle = (parent_descriptor / path.name).open(
+                    "x", encoding="utf-8", newline="\n"
+                )
             else:
                 descriptor = os.open(
                     path.name,
@@ -638,9 +731,10 @@ def atomic_write(
         path.parent, target, coordination_root, create=True
     ) as parent_descriptor:
         _regular_metadata_at(path, parent_descriptor)
-        if parent_descriptor is None:
+        if isinstance(parent_descriptor, Path):
+            stable_path = parent_descriptor / path.name
             descriptor, temporary_name = tempfile.mkstemp(
-                prefix=path.name + ".", suffix=".tmp", dir=path.parent
+                prefix=path.name + ".", suffix=".tmp", dir=parent_descriptor
             )
             try:
                 with os.fdopen(
@@ -650,7 +744,7 @@ def atomic_write(
                     handle.flush()
                     os.fsync(handle.fileno())
                 _regular_metadata_at(path, parent_descriptor)
-                replace_with_retry(temporary_name, path)
+                replace_with_retry(temporary_name, stable_path)
             except BaseException:
                 try:
                     os.unlink(temporary_name)
@@ -1065,6 +1159,8 @@ def workspace_lock(
                 "mutex. GDO will not fall back to a session-local lock.",
             )
         acquired = False
+        locked_root_handle: int | None = None
+        lease_token = None
         try:
             wait_result = wait_for_single_object(handle, round(timeout * 1000))
             if wait_result in (0x00000000, 0x00000080):
@@ -1076,8 +1172,28 @@ def workspace_lock(
             else:
                 error = ctypes.get_last_error()
                 raise OSError(error, "Could not wait for the workspace mutex.")
+
+            # Hold the exact canonical root for the entire critical section.
+            # Later operations compare their independently opened root handle
+            # to both this path and its volume-qualified file identity.
+            locked_root_handle = _open_stable_windows_directory(resolved_root)
+            locked_root_path = _windows_final_handle_path(locked_root_handle)
+            locked_root_volume, locked_root_file_index = _windows_handle_identity(
+                locked_root_handle
+            )
+            lease_token = _WINDOWS_ROOT_LEASE.set(
+                (
+                    os.fspath(locked_root_path),
+                    locked_root_volume,
+                    locked_root_file_index,
+                )
+            )
             yield
         finally:
+            if lease_token is not None:
+                _WINDOWS_ROOT_LEASE.reset(lease_token)
+            if locked_root_handle is not None:
+                _close_windows_handle(locked_root_handle)
             if acquired:
                 release_mutex(handle)
             close_handle(handle)
@@ -1114,7 +1230,7 @@ def workspace_lock(
         )
         lease_token = _POSIX_ROOT_LEASE.set(
             (
-                os.fspath(_lexical_comparison_path(resolved_root)),
+                os.fspath(_comparison_path(resolved_root)),
                 locked_root.st_dev,
                 locked_root.st_ino,
             )

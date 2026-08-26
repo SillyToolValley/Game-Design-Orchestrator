@@ -21,8 +21,8 @@
     "scripts/create_design_artifact.py": "5930f01decfecc31e1f16c00b9a5cc8446ac445203be14f3a1faaa82af43327e",
     "scripts/init_design_project.py": "8a2d9d3fbe6d0c4c2cb0a870ff32fd384ff3580acc43b60150ab95a534a0b714",
     "scripts/snapshot_design_workspace.py": "da74055381739ca0579e1174c7136b8542783f320131aad346a9562b0b46c190",
-    "scripts/workspace.py": "d915323d21ba87c61a00b6cba810943770bc61f08d692c9a2711536b8dd4f0ba",
+    "scripts/workspace.py": "14b69ee2fbef99c16d566df8a65d8bc975d731ab09a2c89876361b463470e6a8",
     "tests/test_orchestrator.py": "010f08ad6b2beb3943ac0f96c42b2139c7e5c0e4ee22b9b4459ce1516d3e359b",
-    "tests/test_workspace_hardening.py": "6b417ae1ef480be06d11cbb619a798b8cbde64116770e3c883c14dcb06e86919"
+    "tests/test_workspace_hardening.py": "0dafa9a003e5bccbb0c89650c9d563f470d579f1cc10bc8911688ef67834acb6"
   }
 }

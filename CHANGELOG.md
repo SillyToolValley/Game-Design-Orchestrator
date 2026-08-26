@@ -21,6 +21,7 @@ All notable changes to Game Design Orchestrator are documented here. Pre-1.0 bet
 - Require reproducible clean-checkout lineage and retained artifact hashes for forward-evaluation run records; metadata validation remains separate from behavioral scoring.
 - Reject Git replacement-object lineage, hidden cache inputs, portable path collisions, non-finite JSON numbers, boolean schema versions, and concurrent mixed-generation reads in evaluation and installation boundaries.
 - Keep interrupted-install cleanup safe on Python 3.10 when a stale staging entry is a Windows junction or another filesystem link.
+- Accept filesystem-equivalent macOS ancestor aliases and Windows 8.3 names during stable-handle checks without relaxing reparse-point, device, or inode replacement detection.
 - Extend the Python 3.10-3.13 CI matrix to macOS in addition to Windows and Ubuntu, with third-party actions pinned to verified commit IDs and checked monthly for updates.
 - Identify this development bundle as 0.1.2-beta and provide explicit migration from official 0.1.0-beta and 0.1.1-beta workspace state.
 
