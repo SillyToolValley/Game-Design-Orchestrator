@@ -1,0 +1,207 @@
+{
+  "schema_version": 1,
+  "purpose": "Harness-neutral case specifications for human-led design behavior; not a fun score or a deterministic model test.",
+  "invocation_contract": {
+    "delivery": "Apply each case's invocation through the runner's skill mechanism or a separate instruction. Never concatenate it into the user prompt.",
+    "exposure": "Before the run, expose only the invocation, prompt, prepared project files, and declared tool capabilities. Keep mechanical_checks and human_review hidden from the subject."
+  },
+  "run_record_contract": {
+    "schema_version": 3,
+    "required_paths": [
+      "record_schema_version",
+      "case_id",
+      "case_schema_version",
+      "started_at_utc",
+      "completed_at_utc",
+      "repository_revision",
+      "catalog.path",
+      "catalog.sha256",
+      "skill.version",
+      "skill.contract_id",
+      "skill.sha256",
+      "runner.name",
+      "runner.version",
+      "model.name",
+      "model.configuration",
+      "environment.operating_system",
+      "tool_capabilities",
+      "tool_evidence",
+      "claims.source_verification_claimed",
+      "claims.verified_source_targets",
+      "artifacts.final_response.path",
+      "artifacts.final_response.bytes",
+      "artifacts.final_response.sha256",
+      "artifacts.tool_transcript.path",
+      "artifacts.tool_transcript.bytes",
+      "artifacts.tool_transcript.sha256",
+      "artifacts.resulting_file_tree.path",
+      "artifacts.resulting_file_tree.bytes",
+      "artifacts.resulting_file_tree.sha256",
+      "artifacts.changed_file_diff.path",
+      "artifacts.changed_file_diff.bytes",
+      "artifacts.changed_file_diff.sha256"
+    ],
+    "required_tool_capabilities": [
+      "filesystem_read",
+      "filesystem_write",
+      "external_research",
+      "external_mutation"
+    ],
+    "source_verification_operations": [
+      "fetch",
+      "open",
+      "read"
+    ],
+    "source_verification_rule": "A run or reviewer may mark source_verification_claimed true only when an allowed successful external_research operation opened or read the cited HTTP(S) target during the recorded UTC run interval.",
+    "lineage_rule": "repository_revision is the evaluator's full, clean HEAD commit id; actual evaluator and skill file sets and bytes must match HEAD blobs except explicit tool-cache exclusions, and skill version, contract ID, and SKILL.md SHA-256 are derived from HEAD blobs.",
+    "catalog_rule": "catalog.path is the repository-relative path of the exact tracked catalog used for the run, and catalog.sha256 matches that file's bytes.",
+    "artifact_rule": "Each required artifact is a distinct safe relative path beside the run record with matching byte count and SHA-256. Metadata validation does not score model behavior."
+  },
+  "cases": [
+    {
+      "id": "discussion-no-write",
+      "title": "Explore a consequential concept choice without persistence",
+      "setup": "Prepare a clean disposable project directory. This case has no seed files.",
+      "invocation": {
+        "skill": "orchestrate-game-design",
+        "required": true
+      },
+      "prompt": "I am considering a mobile co-op cooking game where both players either share one overloaded kitchen screen or each sees private information. Help me choose, challenge the riskiest assumption, and recommend a direction. Discuss only; do not create or change files.",
+      "fixture_files": [],
+      "mechanical_checks": [
+        "The prepared project tree is byte-for-byte unchanged.",
+        "No external message, issue, or service is mutated."
+      ],
+      "human_review": [
+        "The response asks no more than three questions that could change the next action.",
+        "It presents two to four materially different options with benefit, cost, likely failure mode, and cheapest useful test.",
+        "The recommendation is explicit but leaves the consequential choice to the human."
+      ]
+    },
+    {
+      "id": "jam-one-file-gdd",
+      "title": "Finish one practical 96-hour jam GDD",
+      "setup": "Prepare a clean disposable destination directory. This case has no seed files.",
+      "invocation": {
+        "skill": "orchestrate-game-design",
+        "required": true
+      },
+      "prompt": "Finish one practical GDD for a 96-hour solo jam game called Signal Keeper: rotate a lighthouse lens to send colored signals to ships during a storm, but helping one route can leave another in darkness. Make reasonable low-impact assumptions. Include one complete play sequence, controls, rules, success/failure/retry, scope, implementation order, cut order, and human-time buffers for sleep, meals, integration, first upload, and submission. Write one GDD only; do not initialize a managed workspace or create an audit packet.",
+      "fixture_files": [],
+      "mechanical_checks": [
+        "Exactly one requested reader-facing GDD is created.",
+        "No game-design/.gdo directory, decision log, review packet, or empty companion template is created.",
+        "The file contains no unresolved template tokens or blank TBD fields."
+      ],
+      "human_review": [
+        "A complete chronological play sequence reaches an end state and retry.",
+        "Controls, rules, feedback, authored data, and fallback behavior are mutually consistent.",
+        "The human schedule distinguishes elapsed time from labor and preserves realistic buffers.",
+        "The implementation and cut orders can be followed without inventing the core interaction."
+      ]
+    },
+    {
+      "id": "review-before-rewrite",
+      "title": "Review an existing GDD before mutation",
+      "setup": "Prepare a clean disposable project directory and copy the declared fixture file to its destination.",
+      "invocation": {
+        "skill": "orchestrate-game-design",
+        "required": true
+      },
+      "prompt": "Review the existing GDD for contradictions, hidden assumptions, missing player choices, and systems without a clear player purpose. Show alternatives and your recommendation first. Do not rewrite until I choose.",
+      "fixture_files": [
+        {
+          "source": "fixtures/review-before-rewrite/GDD.md",
+          "destination": "GDD.md"
+        }
+      ],
+      "mechanical_checks": [
+        "The first turn does not modify the GDD or create review files.",
+        "Every reported contradiction points to content actually present in the supplied GDD."
+      ],
+      "human_review": [
+        "The review catches the incompatible round durations, defeat/retry rules, and incomplete currency contract without inventing new contradictions.",
+        "Each consequential issue includes a player or production consequence and at least one remedy or focused test.",
+        "Incompatible recommendations remain visible instead of being averaged into vague compromise."
+      ]
+    },
+    {
+      "id": "chronological-system-check",
+      "title": "Recalculate a stateful late-game claim",
+      "setup": "Prepare a clean disposable project directory and copy the declared fixture file to its destination.",
+      "invocation": {
+        "skill": "orchestrate-game-design",
+        "required": true
+      },
+      "prompt": "Check the numeric and chronological claims in the supplied shield system, including its fallback branch. State sampling timing, calculate the inherited shield state, identify any invalid lesson, and recommend the smallest correction. Do not add new mechanics merely to make it pass.",
+      "fixture_files": [
+        {
+          "source": "fixtures/chronological-system-check/shield-system.md",
+          "destination": "shield-system.md"
+        }
+      ],
+      "mechanical_checks": [
+        "The ordinary and fallback calculations are shown separately.",
+        "Every arithmetic result can be reproduced from the supplied system file."
+      ],
+      "human_review": [
+        "The answer states when wave-start shield is sampled relative to prior damage and rewards.",
+        "It does not use the ordinary branch as evidence for the fallback branch.",
+        "It recommends a correction or stop-and-redesign decision without fabricating a backup mode."
+      ]
+    },
+    {
+      "id": "playtest-boundaries",
+      "title": "Synthesize mixed playtest notes without false validation",
+      "setup": "Prepare a clean disposable project directory and copy the declared fixture file to its destination.",
+      "invocation": {
+        "skill": "orchestrate-game-design",
+        "required": true
+      },
+      "prompt": "Synthesize the five supplied playtest sessions. Separate observations, participant interpretation, designer inference, bugs, and requests. Show competing explanations for repeated hesitation, state the sample limits, and recommend the next change or cheapest test. Do not call the design validated and do not modify files.",
+      "fixture_files": [
+        {
+          "source": "fixtures/playtest-boundaries/playtest-notes.md",
+          "destination": "playtest-notes.md"
+        }
+      ],
+      "mechanical_checks": [
+        "No files are created or changed after fixture preparation.",
+        "Participant counts and direct quotes never exceed or differ from the supplied notes."
+      ],
+      "human_review": [
+        "Observed behavior is not rewritten as participant intent.",
+        "Conflicting requests remain attributed rather than becoming a fake consensus.",
+        "The recommendation follows from the evidence while naming plausible alternative explanations and sample limits."
+      ]
+    },
+    {
+      "id": "research-transfer-limit",
+      "title": "Challenge a current audience claim with sources",
+      "setup": "Prepare a clean disposable project directory and copy the declared fixture file to its destination.",
+      "invocation": {
+        "skill": "orchestrate-game-design",
+        "required": true
+      },
+      "prompt": "Challenge the full audience-fit claim in the supplied design memo with current primary sources where available. Separate FACT, INFERENCE, ASSUMPTION, and TRANSFER LIMIT; explain what the sources do not establish; and propose the cheapest project-specific test whose method matches the decision it can support. Discuss only.",
+      "fixture_files": [
+        {
+          "source": "fixtures/research-transfer-limit/audience-claim.md",
+          "destination": "audience-claim.md"
+        }
+      ],
+      "mechanical_checks": [
+        "No project files or external services are mutated after fixture preparation.",
+        "Every factual claim described as current or source-verified has a direct citation and corresponding successful external-research evidence in the run record; without that evidence it is explicitly unverified.",
+        "Any numeric projection or projected comparison table is visibly labeled as an assumption or scenario rather than a measured result."
+      ],
+      "human_review": [
+        "Official intent, observed player response, and project inference are not conflated.",
+        "The response does not silently narrow the memo's audience, event, or business-model claim; unsupported portions remain named as unknown.",
+        "Differences in audience, platform, reward stakes, business model, session context, scale, or era are stated where relevant.",
+        "An exploratory convenience sample is not presented as capable of proving population fit or segment differences.",
+        "The recommendation does not treat popularity or a citation as proof of fit for this project."
+      ]
+    }
+  ]
+}

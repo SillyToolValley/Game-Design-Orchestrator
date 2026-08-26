@@ -2,6 +2,27 @@
 
 All notable changes to Game Design Orchestrator are documented here. Pre-1.0 beta releases may include breaking changes.
 
+## Unreleased
+
+### Added
+
+- Add a cross-platform repository installer that independently verifies manifests, rejects overlapping paths, serializes concurrent installs, validates staged and final bundles, preserves the prior skill, and rolls back on failure.
+- Add a read-only workspace snapshot command for resuming work or handing current `design.md`, mechanical issues, and the DEC/REF/TST/SYS/REV inventory to another tool in Markdown or JSON.
+- Add six public, harness-neutral forward-evaluation specifications with concrete fixtures and deterministic input validation; actual model behavior still requires an isolated run and independent review.
+- Add installer and snapshot regression coverage, including concurrent replacement, path containment, strict checker responses, rollback, metadata boundaries, artifact indexing, dependency references, and invalid-workspace reporting.
+- Include the MIT license in the installed skill bundle.
+
+### Changed
+
+- Clarify that automated coverage proves CLI and filesystem behavior, not cross-model design quality or broad independent designer adoption.
+- Keep the snapshot explicitly subordinate to the human-readable Markdown source of truth so context portability does not create a second design database.
+- Serialize managed-workspace readers and writers, and reject linked or replaced directory entries before workspace mutations.
+- Require reproducible clean-checkout lineage and retained artifact hashes for forward-evaluation run records; metadata validation remains separate from behavioral scoring.
+- Reject Git replacement-object lineage, hidden cache inputs, portable path collisions, non-finite JSON numbers, boolean schema versions, and concurrent mixed-generation reads in evaluation and installation boundaries.
+- Keep interrupted-install cleanup safe on Python 3.10 when a stale staging entry is a Windows junction or another filesystem link.
+- Extend the Python 3.10-3.13 CI matrix to macOS in addition to Windows and Ubuntu, with third-party actions pinned to verified commit IDs and checked monthly for updates.
+- Identify this development bundle as 0.1.2-beta and provide explicit migration from official 0.1.0-beta and 0.1.1-beta workspace state.
+
 ## 0.1.1-beta
 
 Corrective beta release after a stale experimental checkout produced a process-heavy packet instead of a usable game plan.
@@ -37,4 +58,4 @@ First public beta.
 
 ### Beta status
 
-Automated tests and forward-use simulations cover the packaged workflow. Broad independent designer use has not yet been demonstrated.
+Automated tests cover the packaged CLI and filesystem workflow. Forward-use simulations probe agent behavior but are not a cross-model regression benchmark. Broad independent designer use has not yet been demonstrated.

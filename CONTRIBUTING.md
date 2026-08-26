@@ -29,8 +29,10 @@ Requirements are Python 3.10 or newer and Git. Runtime scripts use only the stan
 
 ```bash
 python -m pip install 'pytest>=8,<9'
-python -m compileall -q skills/orchestrate-game-design/scripts
+python -m compileall -q install.py skills/orchestrate-game-design/scripts
+python evals/validate_cases.py
 python -m unittest discover -s skills/orchestrate-game-design/tests -p 'test_*.py' -v
+python -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
 When changing CLI arguments, check every public surface:
@@ -44,9 +46,11 @@ python skills/orchestrate-game-design/scripts/create_design_artifact.py test --h
 python skills/orchestrate-game-design/scripts/create_design_artifact.py system --help
 python skills/orchestrate-game-design/scripts/create_design_artifact.py review --help
 python skills/orchestrate-game-design/scripts/check_design_workspace.py --help
+python skills/orchestrate-game-design/scripts/snapshot_design_workspace.py --help
+python install.py --help
 ```
 
-CI covers Windows and Ubuntu with Python 3.10 through 3.13.
+CI covers Windows, macOS, and Ubuntu with Python 3.10 through 3.13.
 
 ## Lean artifact contract
 
@@ -62,7 +66,7 @@ When changing this contract, review `SKILL.md`, templates, scripts, focused test
 4. AI opinion and simulation do not prove that a game is fun.
 5. Player sessions, quotes, telemetry, and research are never fabricated.
 6. Existing user files are not overwritten unexpectedly.
-7. Writes remain inside the selected workspace and interrupted creation is recoverable.
+7. Writes remain inside the selected workspace and interrupted creation or installation is recoverable.
 8. IDs and recorded decisions are stable.
 9. Diagnostics report consistency problems without rating design quality.
 
@@ -72,7 +76,8 @@ When changing this contract, review `SKILL.md`, templates, scripts, focused test
 - New fields demonstrate a user need and cover creation plus reading.
 - CLI changes cover success and invalid input.
 - Filesystem changes cover containment, links where relevant, interrupted writes, and supported systems.
-- Workflow changes include a concise realistic example.
+- Installation changes cover source validation, clean replacement, backup, rollback, and dry-run behavior.
+- Workflow changes include a concise realistic fixture or example and distinguish deterministic validation from model-behavior review.
 
 Use fictional projects and clearly synthetic observations.
 

@@ -1,6 +1,6 @@
 [tool.pytest.ini_options]
 minversion = "8.0"
-testpaths = ["skills/orchestrate-game-design/tests"]
+testpaths = ["skills/orchestrate-game-design/tests", "tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]

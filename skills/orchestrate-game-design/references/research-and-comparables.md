@@ -17,11 +17,12 @@ Popularity is not proof that a mechanic caused an outcome. A confident source is
 ## Research procedure
 
 1. Write the decision question in one sentence.
-2. List what is already known from the project and the user.
-3. Identify the missing fact that could change the decision.
-4. Search narrowly and prefer primary sources. Check dates for information that can change.
-5. Capture the claim, citation, source context, and what it does not establish.
-6. Translate the finding into an option, warning, or focused test.
+2. Preserve the scope of the user's claim: population, context, intervention or feature, outcome, and time horizon. If the available evidence covers only a subset, name the uncovered portion instead of silently narrowing the question.
+3. List what is already known from the project and the user, including reward stakes and business-model assumptions when they could change player pressure, incentives, access, or interpretation.
+4. Identify the missing fact that could change the decision.
+5. Search narrowly and prefer primary sources. Check dates for information that can change.
+6. Capture the claim, citation, source context, and what it does not establish.
+7. Translate the finding into an option, warning, or focused test.
 
 Stop when additional sources are repeating the same useful information or cannot affect the recommendation.
 
@@ -68,3 +69,6 @@ Extract a principle in project language. Avoid copying a surface feature merely 
 - Record disagreement between sources instead of hiding it.
 - Say `unknown` when the evidence does not answer the question.
 - Never fabricate market numbers, player quotes, citations, or hands-on experience.
+- Label projected values and projected comparison tables as `ASSUMPTION` or `SCENARIO`; do not format them so they can be mistaken for measured results or external benchmarks.
+- Match a proposed study to the decision it can support. A small convenience sample can expose usability problems or generate hypotheses, but it cannot establish population fit or differences between audience or business-model segments. Name the recruitment, method, and decision limit.
+- Claim that a source was opened, checked, current, or verified only when the run includes tool evidence for that source. Otherwise distinguish a supplied citation from an independently verified source and state what still needs checking.

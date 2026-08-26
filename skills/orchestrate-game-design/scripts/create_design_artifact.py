@@ -22,8 +22,10 @@ try:
         load_state,
         reject_legacy_workspace,
         read_template,
+        read_workspace_text,
         render_template,
         require_contained,
+        resolve_root,
         resolve_target,
         slugify,
         workspace_lock,
@@ -41,8 +43,10 @@ except ImportError:
         load_state,
         reject_legacy_workspace,
         read_template,
+        read_workspace_text,
         render_template,
         require_contained,
+        resolve_root,
         resolve_target,
         slugify,
         workspace_lock,
@@ -79,13 +83,14 @@ def append_record(
     artifact_id: str,
     args: argparse.Namespace,
     target: Path,
+    coordination_root: Path,
     project_name: str,
     today: str,
 ) -> Path:
     filename, template_name = AGGREGATES[kind]
     path = target / filename
     if path.exists():
-        base = path.read_text(encoding="utf-8-sig").rstrip()
+        base = read_workspace_text(path, target, coordination_root).rstrip()
     else:
         base = render_template(
             read_template(__file__, template_name),
@@ -141,7 +146,12 @@ def append_record(
 - Transfer limit: {clean_optional(args.transfer_limit)}
 - Notes: {clean_optional(args.note)}
 """
-    atomic_write(path, base + "\n\n" + entry.rstrip() + "\n", target)
+    atomic_write(
+        path,
+        base + "\n\n" + entry.rstrip() + "\n",
+        target,
+        coordination_root,
+    )
     return path
 
 
@@ -181,11 +191,11 @@ def create_file_artifact(
     artifact_id: str,
     args: argparse.Namespace,
     target: Path,
+    coordination_root: Path,
     today: str,
 ) -> Path:
     _prefix, directory_name, template_name = FILE_ARTIFACTS[kind]
     artifact_dir = target / directory_name
-    artifact_dir.mkdir(parents=True, exist_ok=True)
     require_contained(artifact_dir, target)
     path = artifact_dir / f"{artifact_id}-{slugify(args.name, kind)}.md"
 
@@ -217,7 +227,7 @@ def create_file_artifact(
         content = marker + "\n\n" + content.lstrip()
     if not content.endswith("\n"):
         content += "\n"
-    if not write_new(path, content, target):
+    if not write_new(path, content, target, coordination_root):
         raise WorkspaceError(f"Artifact already exists: {path}.")
     return path
 
@@ -283,25 +293,29 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = build_parser().parse_args()
     try:
-        target = resolve_target(args.root, args.directory)
-        if not target.is_dir():
-            raise WorkspaceError(
-                f"Missing design workspace {target}. Run init_design_project.py first."
-            )
-        reject_legacy_workspace(target)
+        root = resolve_root(args.root)
+        target = resolve_target(root, args.directory)
         today = date.today().isoformat()
         state_path = target / ".gdo" / "state.json"
-        # Fail on version or contract mismatch before the lock file is opened.
-        load_state(target)
-        with workspace_lock(target):
-            state = load_state(target)
-            artifact_id, next_number = allocate_id(state, args.kind, target)
+        with workspace_lock(target, root):
+            if not target.is_dir():
+                raise WorkspaceError(
+                    f"Missing design workspace {target}. "
+                    "Run init_design_project.py first."
+                )
+            # Only the state read under the writer lock is authoritative.
+            reject_legacy_workspace(target, root)
+            state = load_state(target, root)
+            artifact_id, next_number = allocate_id(
+                state, args.kind, target, root
+            )
             if args.kind in AGGREGATES:
                 path = append_record(
                     kind=args.kind,
                     artifact_id=artifact_id,
                     args=args,
                     target=target,
+                    coordination_root=root,
                     project_name=state["project_name"],
                     today=today,
                 )
@@ -311,12 +325,13 @@ def main() -> int:
                     artifact_id=artifact_id,
                     args=args,
                     target=target,
+                    coordination_root=root,
                     today=today,
                 )
             state["next_ids"][args.kind] = next_number
             state["updated_at"] = today
             state["tool_version"] = VERSION
-            atomic_json(state_path, state, target)
+            atomic_json(state_path, state, target, root)
     except (WorkspaceError, OSError) as exc:
         raise SystemExit(str(exc)) from exc
 

@@ -19,8 +19,9 @@ SCRIPTS_ROOT = SKILL_ROOT / "scripts"
 INIT_SCRIPT = SCRIPTS_ROOT / "init_design_project.py"
 CREATE_SCRIPT = SCRIPTS_ROOT / "create_design_artifact.py"
 CHECK_SCRIPT = SCRIPTS_ROOT / "check_design_workspace.py"
+SNAPSHOT_SCRIPT = SCRIPTS_ROOT / "snapshot_design_workspace.py"
 INSTALL_CHECK_SCRIPT = SCRIPTS_ROOT / "check_installation.py"
-VERSION = "0.1.1-beta"
+VERSION = "0.1.2-beta"
 CONTRACT_ID = "human-led-deliverable-first-v1"
 
 
@@ -85,6 +86,20 @@ def check_workspace(
     return result, payload(result)
 
 
+def snapshot_workspace(
+    root: Path, *arguments: str, check: bool = True
+) -> tuple[subprocess.CompletedProcess[str], dict[str, Any]]:
+    result = run_python(
+        SNAPSHOT_SCRIPT,
+        "--root",
+        root,
+        "--json",
+        *arguments,
+        check=check,
+    )
+    return result, payload(result)
+
+
 def issue_codes(report: dict[str, Any], key: str) -> set[str]:
     return {issue["code"] for issue in report[key]}
 def tree_snapshot(root: Path) -> dict[str, bytes]:
@@ -130,7 +145,13 @@ def write_legacy_signature(target: Path) -> None:
 
 class LeanOrchestratorTests(unittest.TestCase):
     def test_versions_are_consistent(self) -> None:
-        for script in (INIT_SCRIPT, CREATE_SCRIPT, CHECK_SCRIPT, INSTALL_CHECK_SCRIPT):
+        for script in (
+            INIT_SCRIPT,
+            CREATE_SCRIPT,
+            CHECK_SCRIPT,
+            SNAPSHOT_SCRIPT,
+            INSTALL_CHECK_SCRIPT,
+        ):
             result = run_python(script, "--version")
             self.assertEqual(VERSION, result.stdout.strip())
 
@@ -378,31 +399,43 @@ class LeanOrchestratorTests(unittest.TestCase):
             self.assertIn("SKILL.md", report["changed_files"])
             self.assertIn("scripts/unexpected.py", report["unexpected_files"])
 
-    def test_one_off_handoff_contract_is_explicit(self) -> None:
-        skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
-        deliverables = (
-            SKILL_ROOT / "references" / "practical-deliverables.md"
-        ).read_text(encoding="utf-8")
-        self.assertIn(
-            "Do not initialize a GDO workspace",
-            skill,
+    def test_installation_check_rejects_noncanonical_manifest_numbers(self) -> None:
+        cases = (
+            ("boolean-schema", lambda payload: payload.update(schema_version=True)),
+            ("nonfinite-number", lambda payload: payload.update(extra=float("nan"))),
         )
-        self.assertIn(
-            "write the primary file directly",
-            deliverables,
-        )
-        self.assertIn(
-            "Default to one reader-facing primary document",
-            skill,
-        )
-        self.assertIn("fresh independent reviewer", skill)
-        self.assertIn("require calculation of high-impact numeric claims", skill)
-        self.assertIn("actual chronological run", skill)
-        self.assertIn("isolated zero-modifier check", deliverables)
-        self.assertIn("A base-mode witness cannot validate a variant", deliverables)
-        self.assertIn("Do not add a fallback merely because", deliverables)
-        self.assertIn("Use a one-tick tolerance", deliverables)
-        self.assertIn("preserve its trigger", deliverables)
+        for label, mutate in cases:
+            with self.subTest(label=label):
+                with temporary_workspace("gdo-install-strict-") as temporary:
+                    copied_skill = Path(temporary) / "orchestrate-game-design"
+                    shutil.copytree(SKILL_ROOT, copied_skill)
+                    manifest_path = copied_skill / "bundle-manifest.json"
+                    manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
+                    mutate(manifest)
+                    manifest_path.write_text(
+                        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+                        encoding="utf-8",
+                    )
+
+                    result = run_python(
+                        copied_skill / "scripts" / "check_installation.py",
+                        "--json",
+                        "--expect-version",
+                        VERSION,
+                        check=False,
+                    )
+                    report = payload(result)
+                    self.assertNotEqual(0, result.returncode)
+                    self.assertTrue(
+                        any(
+                            marker in issue
+                            for issue in report["issues"]
+                            for marker in (
+                                "bundle manifest schema mismatch",
+                                "invalid bundle manifest",
+                            )
+                        )
+                    )
 
     def test_packaged_surface_stays_lean(self) -> None:
         self.assertEqual(
@@ -411,6 +444,7 @@ class LeanOrchestratorTests(unittest.TestCase):
                 "check_installation.py",
                 "create_design_artifact.py",
                 "init_design_project.py",
+                "snapshot_design_workspace.py",
                 "workspace.py",
             },
             {
@@ -700,6 +734,105 @@ class LeanOrchestratorTests(unittest.TestCase):
             self.assertEqual(0, report["summary"]["errors"])
             self.assertEqual([], report["errors"])
 
+    def test_snapshot_indexes_context_without_creating_files(self) -> None:
+        with temporary_workspace("gdo-snapshot-") as temporary:
+            root = Path(temporary)
+            initialize(root, "Lighthouse Tactics")
+            create(
+                root,
+                "decision",
+                "Keep one shared beacon",
+                "--choice",
+                "Use one shared beacon.",
+            )
+            create(
+                root,
+                "reference",
+                "Input guidance",
+                "--source",
+                "https://example.com/input",
+            )
+            create(root, "test", "First-turn comprehension")
+            first_system = create(root, "system", "Beacon state")
+            create(
+                root,
+                "system",
+                "Signal routing",
+                "--dependency",
+                first_system["id"],
+            )
+            create(
+                root,
+                "review",
+                "Challenge the core loop",
+                "--artifact",
+                "design.md",
+            )
+            before = tree_snapshot(root)
+
+            result, report = snapshot_workspace(root)
+            self.assertEqual(0, result.returncode)
+            self.assertEqual("Lighthouse Tactics", report["project_name"])
+            self.assertEqual(
+                {
+                    "decision": 1,
+                    "reference": 1,
+                    "test": 1,
+                    "system": 2,
+                    "review": 1,
+                },
+                report["counts"],
+            )
+            self.assertIn("Lighthouse Tactics", report["design"]["content"])
+            by_id = {artifact["id"]: artifact for artifact in report["artifacts"]}
+            self.assertEqual("DECIDED", by_id["DEC-001"]["status"])
+            self.assertEqual("RECORDED", by_id["REF-001"]["status"])
+            self.assertEqual("UNSET", by_id["TST-001"]["status"])
+            self.assertEqual(["SYS-001"], by_id["SYS-002"]["references"])
+            self.assertEqual(before, tree_snapshot(root))
+
+            _compact_result, compact = snapshot_workspace(root, "--no-design")
+            self.assertFalse(compact["design"]["included"])
+            self.assertIsNone(compact["design"]["content"])
+
+    def test_snapshot_ignores_metadata_lookalikes_in_artifact_bodies(self) -> None:
+        with temporary_workspace("gdo-snapshot-metadata-") as temporary:
+            root = Path(temporary)
+            initialize(root)
+            created = create(root, "test", "Metadata boundary")
+            artifact = Path(created["path"])
+            original = artifact.read_text(encoding="utf-8")
+            artifact.write_text(
+                original.replace(
+                    "- Status: PLANNED | RUNNING | COMPLETE | CANCELLED",
+                    "- Status: PLANNED",
+                    1,
+                )
+                + "\n## Notes\n\n- Status: COMPLETE\n- Updated: 2099-12-31\n",
+                encoding="utf-8",
+            )
+
+            _result, report = snapshot_workspace(root)
+            indexed = {item["id"]: item for item in report["artifacts"]}
+            self.assertEqual("PLANNED", indexed[created["id"]]["status"])
+            self.assertNotEqual("2099-12-31", indexed[created["id"]]["updated"])
+
+    def test_snapshot_reports_mechanical_errors_as_json(self) -> None:
+        with temporary_workspace("gdo-snapshot-errors-") as temporary:
+            root = Path(temporary)
+            initialize(root)
+            design = root / "game-design" / "design.md"
+            design.write_text(
+                design.read_text(encoding="utf-8") + "\nDepends on SYS-404.\n",
+                encoding="utf-8",
+            )
+            result, report = snapshot_workspace(root, check=False)
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn(
+                "broken-artifact-reference",
+                {issue["code"] for issue in report["validation"]["errors"]},
+            )
+
     def test_check_finds_duplicate_ids(self) -> None:
         with temporary_workspace("gdo-duplicate-") as temporary:
             root = Path(temporary)
@@ -778,6 +911,43 @@ class LeanOrchestratorTests(unittest.TestCase):
             state.write_text('{"schema_version": 999}\n', encoding="utf-8")
             _result, report = check_workspace(root, check=False)
             self.assertIn("invalid-state", issue_codes(report, "errors"))
+
+    def test_workspace_state_rejects_boolean_schema_and_nonfinite_json(self) -> None:
+        cases = (
+            (
+                "boolean-schema",
+                lambda state: state.update(schema_version=True),
+                "schema_version",
+            ),
+            (
+                "nonfinite-number",
+                lambda state: state.update(extra=float("nan")),
+                "Non-finite JSON number",
+            ),
+        )
+        for label, mutate, message in cases:
+            with self.subTest(label=label):
+                with temporary_workspace("gdo-state-strict-") as temporary:
+                    root = Path(temporary)
+                    initialize(root)
+                    state_path = root / "game-design" / ".gdo" / "state.json"
+                    state = json.loads(state_path.read_text(encoding="utf-8"))
+                    mutate(state)
+                    state_path.write_text(
+                        json.dumps(state, ensure_ascii=False, indent=2) + "\n",
+                        encoding="utf-8",
+                    )
+                    result = run_python(
+                        CREATE_SCRIPT,
+                        "--root",
+                        root,
+                        "decision",
+                        "--name",
+                        "Must remain unwritten",
+                        check=False,
+                    )
+                    self.assertNotEqual(0, result.returncode)
+                    self.assertIn(message, result.stderr)
 
     def test_default_generated_files_avoid_retired_workflow_markers(self) -> None:
         with temporary_workspace("gdo-no-legacy-") as temporary:

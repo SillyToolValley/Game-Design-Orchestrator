@@ -21,6 +21,7 @@ try:
         render_template,
         resolve_root,
         resolve_target,
+        workspace_lock,
         write_new,
     )
 except ImportError:
@@ -36,6 +37,7 @@ except ImportError:
         render_template,
         resolve_root,
         resolve_target,
+        workspace_lock,
         write_new,
     )
 
@@ -59,51 +61,60 @@ def main() -> int:
     parser.add_argument(
         "--migrate",
         action="store_true",
-        help="Explicitly migrate an official 0.1.0-beta workspace state.",
+        help=(
+            "Explicitly migrate an official 0.1.0-beta or 0.1.1-beta "
+            "workspace state."
+        ),
     )
     args = parser.parse_args()
 
     try:
         root = resolve_root(args.root)
         target = resolve_target(root, args.directory)
-        if target.exists() and not target.is_dir():
-            raise WorkspaceError(f"Design workspace is not a directory: {target}.")
-        reject_legacy_workspace(target)
         project_name = (args.name or root.name).strip()
         if not project_name:
             raise WorkspaceError("Project name must not be empty.")
 
-        target.mkdir(parents=True, exist_ok=True)
-        state_path = target / ".gdo" / "state.json"
-        migrated = (
-            migrate_official_state(target)
-            if args.migrate and state_path.exists()
-            else False
-        )
-        existing_state = load_state(target) if state_path.exists() else None
-        effective_name = (
-            existing_state["project_name"] if existing_state is not None else project_name
-        )
-        values = {
-            "PROJECT_NAME": effective_name,
-            "DATE": date.today().isoformat(),
-        }
-        design_text = render_template(
-            read_template(__file__, "design.md.tmpl"), values
-        )
-        state_text = json.dumps(
-            initial_state(effective_name), ensure_ascii=False, indent=2
-        ) + "\n"
+        with workspace_lock(target, root):
+            if target.exists() and not target.is_dir():
+                raise WorkspaceError(f"Design workspace is not a directory: {target}.")
+            reject_legacy_workspace(target, root)
+            state_path = target / ".gdo" / "state.json"
+            migrated = (
+                migrate_official_state(target, root)
+                if args.migrate and state_path.exists()
+                else False
+            )
+            existing_state = (
+                load_state(target, root) if state_path.exists() else None
+            )
+            effective_name = (
+                existing_state["project_name"]
+                if existing_state is not None
+                else project_name
+            )
+            values = {
+                "PROJECT_NAME": effective_name,
+                "DATE": date.today().isoformat(),
+            }
+            design_text = render_template(
+                read_template(__file__, "design.md.tmpl"), values
+            )
+            state_text = json.dumps(
+                initial_state(effective_name), ensure_ascii=False, indent=2
+            ) + "\n"
 
-        created: list[str] = []
-        skipped: list[str] = []
-        for path, text in (
-            (target / "design.md", design_text),
-            (state_path, state_text),
-            (target / ".gitignore", GITIGNORE),
-        ):
-            collection = created if write_new(path, text, target) else skipped
-            collection.append(str(path))
+            created: list[str] = []
+            skipped: list[str] = []
+            for path, text in (
+                (target / "design.md", design_text),
+                (state_path, state_text),
+                (target / ".gitignore", GITIGNORE),
+            ):
+                collection = (
+                    created if write_new(path, text, target, root) else skipped
+                )
+                collection.append(str(path))
     except (WorkspaceError, OSError) as exc:
         raise SystemExit(str(exc)) from exc
 

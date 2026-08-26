@@ -24,8 +24,12 @@ try:
         id_number,
         load_state,
         legacy_workspace_indicators,
+        read_workspace_text,
         require_contained,
+        resolve_root,
         resolve_target,
+        workspace_lock,
+        workspace_markdown_paths,
     )
 except ImportError:
     from workspace import (
@@ -40,8 +44,12 @@ except ImportError:
         id_number,
         load_state,
         legacy_workspace_indicators,
+        read_workspace_text,
         require_contained,
+        resolve_root,
         resolve_target,
+        workspace_lock,
+        workspace_markdown_paths,
     )
 
 
@@ -63,8 +71,9 @@ class Issue:
 
 
 class Doctor:
-    def __init__(self, target: Path) -> None:
+    def __init__(self, target: Path, coordination_root: Path) -> None:
         self.target = target
+        self.coordination_root = coordination_root
         self.errors: list[Issue] = []
         self.warnings: list[Issue] = []
         self.files_checked = 0
@@ -93,7 +102,9 @@ class Doctor:
                 "Run init_design_project.py before using this command.",
             )
             return
-        indicators = legacy_workspace_indicators(self.target)
+        indicators = legacy_workspace_indicators(
+            self.target, self.coordination_root
+        )
         if indicators:
             self.legacy = True
             self.add_error(
@@ -117,19 +128,26 @@ class Doctor:
             )
         state_path = self.target / ".gdo" / "state.json"
         try:
-            self.state = load_state(self.target)
+            self.state = load_state(self.target, self.coordination_root)
         except WorkspaceError as exc:
             self.add_error("invalid-state", state_path, str(exc))
 
     def read_markdown(self) -> None:
         if not self.target.is_dir():
             return
-        for path in sorted(self.target.rglob("*.md")):
-            if ".gdo" in path.parts:
-                continue
+        try:
+            paths = workspace_markdown_paths(
+                self.target, self.coordination_root
+            )
+        except (OSError, WorkspaceError) as exc:
+            self.add_error("unsafe-workspace-entry", self.target, str(exc))
+            return
+        for path in paths:
             try:
                 require_contained(path, self.target)
-                text = path.read_text(encoding="utf-8-sig")
+                text = read_workspace_text(
+                    path, self.target, self.coordination_root
+                )
             except (OSError, UnicodeDecodeError, WorkspaceError) as exc:
                 self.add_error("unreadable-markdown", path, str(exc))
                 continue
@@ -294,11 +312,13 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
-        target = resolve_target(args.root, args.directory)
-    except WorkspaceError as exc:
+        root = resolve_root(args.root)
+        target = resolve_target(root, args.directory)
+        with workspace_lock(target, root):
+            doctor = Doctor(target, root)
+            doctor.run()
+    except (WorkspaceError, OSError) as exc:
         raise SystemExit(str(exc)) from exc
-    doctor = Doctor(target)
-    doctor.run()
     payload = {
         "target": str(target),
         "version": VERSION,

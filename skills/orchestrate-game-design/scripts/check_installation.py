@@ -21,6 +21,7 @@ ENTRYPOINTS = (
     "init_design_project.py",
     "create_design_artifact.py",
     "check_design_workspace.py",
+    "snapshot_design_workspace.py",
 )
 LEGACY_REMNANTS = (
     "scripts/audit_design_project.py",
@@ -36,6 +37,10 @@ LEGACY_REMNANTS = (
 MANIFEST_NAME = "bundle-manifest.json"
 MANIFEST_SCHEMA_VERSION = 1
 HASH_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+
+
+def reject_nonfinite_json_constant(value: str) -> None:
+    raise ValueError(f"non-finite JSON number is not allowed: {value}")
 
 
 def file_sha256(path: Path) -> str:
@@ -60,17 +65,25 @@ def main() -> int:
     manifest_payload: dict[str, object] = {}
     manifest_files: dict[str, str] = {}
     try:
-        loaded_manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
+        loaded_manifest = json.loads(
+            manifest_path.read_text(encoding="utf-8-sig"),
+            parse_constant=reject_nonfinite_json_constant,
+        )
     except FileNotFoundError:
         issues.append(f"missing bundle manifest: {MANIFEST_NAME}")
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
         issues.append(f"invalid bundle manifest: {exc}")
     else:
         if not isinstance(loaded_manifest, dict):
             issues.append("bundle manifest must contain one JSON object")
         else:
             manifest_payload = loaded_manifest
-            if manifest_payload.get("schema_version") != MANIFEST_SCHEMA_VERSION:
+            schema_version = manifest_payload.get("schema_version")
+            if (
+                not isinstance(schema_version, int)
+                or isinstance(schema_version, bool)
+                or schema_version != MANIFEST_SCHEMA_VERSION
+            ):
                 issues.append("bundle manifest schema mismatch")
             if manifest_payload.get("version") != VERSION:
                 issues.append("bundle manifest version mismatch")
@@ -133,7 +146,7 @@ def main() -> int:
             issues.append(f"missing entrypoint: scripts/{name}")
             continue
         result = subprocess.run(
-            [sys.executable, str(script), "--version"],
+            [sys.executable, "-B", str(script), "--version"],
             capture_output=True,
             text=True,
             encoding="utf-8",

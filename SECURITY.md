@@ -40,6 +40,8 @@ Poor design advice, a missed contradiction, or disagreement with a recommendatio
 
 - Commit or back up the project before adopting a new beta.
 - Run commands against a specific game repository, not a home or broad shared directory.
+- Prefer canonical local paths. Windows mapped-drive or `subst` aliases may be conservatively rejected, and network filesystems can provide different locking guarantees.
+- Workspace locks coordinate ordinary GDO commands; they are not a sandbox against a hostile process running under the same operating-system account and moving already-open directories.
 - Review generated changes before committing.
 - Keep credentials, identifiable player data, recordings, and unrestricted telemetry out of GDO artifacts.
 - Treat third-party templates and forks as untrusted.

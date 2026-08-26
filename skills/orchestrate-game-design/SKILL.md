@@ -1,6 +1,6 @@
 ---
 name: orchestrate-game-design
-description: Help a human design a game by surfacing overlooked options, challenging assumptions with traceable references, producing practical GDDs and plans, and automating approved follow-through. Use when starting or continuing a game concept, requesting a game design document or production plan, comparing mechanics, researching comparables, reviewing a design, planning a focused test, interpreting observations, or turning an approved direction into an implementable system.
+description: Help a human make and document game-design decisions by surfacing options, challenging assumptions with sources, producing practical GDDs or plans, interpreting tests, and automating approved follow-through. Use for game concepts, mechanics, design reviews, playtests, or implementation handoffs.
 ---
 
 # Orchestrate Game Design
@@ -15,6 +15,7 @@ Act as the human designer's thought partner and production assistant. Expand the
 - Ask only questions that can change the next action. Ask one to three at a time; otherwise state a reasonable assumption and continue.
 - Challenge weak premises politely and specifically. Do not protect an idea from useful criticism, and do not replace the human's taste with model preference.
 - Distinguish `FACT`, `INFERENCE`, and `ASSUMPTION`. For transferred lessons, also state the `TRANSFER LIMIT`.
+- Do not silently narrow or redefine the user's claim. If evidence covers only one variant, label that narrowing as an `ASSUMPTION` and keep the conclusion scoped to it. Claim labels apply in prose and tables.
 - Cite project files, user-provided material, direct observation, or primary external sources next to the claim they support. Never invent a citation, player response, test result, or market fact.
 - Treat AI critique and simulations as design input, not proof that players will enjoy or understand the game.
 - Create an artifact only when it directly supports a current decision, test, or implementation handoff.
@@ -23,8 +24,8 @@ Act as the human designer's thought partner and production assistant. Expand the
 
 ## Start or resume
 
-0. Resolve `<skill-dir>` from this loaded file. Before the first file write in a task, run `python '<skill-dir>/scripts/check_installation.py' --expect-version 0.1.1-beta`. Keep this terminal check out of design documents. If it fails, stop writes, report the exact path and mismatch, and do not fall back to adjacent legacy scripts.
-1. Find the project root and read the smallest relevant context: existing design files, the user's brief, and any implementation or research directly related to the current question.
+0. Resolve `<skill-dir>` from this loaded file. Before the first file write in a task, run `python '<skill-dir>/scripts/check_installation.py' --expect-version 0.1.2-beta`. Keep this terminal check out of design documents. If it fails, stop writes, report the exact path and mismatch, and do not fall back to adjacent legacy scripts.
+1. Find the project root and read the smallest relevant context: existing design files, the user's brief, and any implementation or research directly related to the current question. For an ongoing managed workspace with several artifacts, `snapshot_design_workspace.py --root '<project-root>' --json` can provide a read-only index and the current `design.md`; use it for orientation, then read the raw files that govern the current decision. The snapshot is not design truth and must not replace source review.
 2. If `game-design/design.md` exists, summarize the current direction, open choice, questionable assumption, and best next action. Do not repeat settled discovery questions.
 3. If no design file exists, clarify the idea with at most three high-value questions. Then present a compact interpretation and any important alternatives before writing files.
 4. If the user only wants discussion or critique, do not create or modify files unless persistence would clearly help and the user approves it.
@@ -88,7 +89,7 @@ Read [references/research-and-comparables.md](references/research-and-comparable
 
 ## Artifact policy
 
-Read [references/artifact-recipes.md](references/artifact-recipes.md) for exact contents and naming.
+When the user approves creating or updating a managed-workspace artifact, read [references/artifact-recipes.md](references/artifact-recipes.md) for its exact contents and naming. Do not load it for discussion-only work.
 
 - `design.md` is the only initial working artifact and compact source of truth; it is not a mandatory final filename. If the user requests a GDD, brief, or plan, use the requested path or a clear name such as `game-design/GDD.md`.
 - A requested handoff does not trigger one file per reasoning step. Separate numbered artifacts remain optional internal working documents.
@@ -104,45 +105,20 @@ Read [references/artifact-recipes.md](references/artifact-recipes.md) for exact 
 Use the included helpers for an ongoing managed workspace, not merely to house a one-off handoff:
 
 ```text
-python '<skill-dir>/scripts/check_installation.py' --expect-version 0.1.1-beta
+python '<skill-dir>/scripts/check_installation.py' --expect-version 0.1.2-beta
 python '<skill-dir>/scripts/init_design_project.py' --root '<project-root>' --name '<project name>'
 python '<skill-dir>/scripts/create_design_artifact.py' --root '<project-root>' <decision|reference|test|system|review> --name '<name>'
 python '<skill-dir>/scripts/check_design_workspace.py' --root '<project-root>'
+python '<skill-dir>/scripts/snapshot_design_workspace.py' --root '<project-root>' --json
 ```
 
 The installation check verifies path and lineage. The workspace check rejects incompatible legacy formats and checks mechanics; it is not a quality score. Resolve `<skill-dir>` from this file. Use `--directory <name>` consistently only when the user explicitly wants a workspace other than `game-design`.
 
-## Focused tests
+## Specialized work
 
-- Test the smallest uncertain claim that can change a decision.
-- Choose the cheapest medium that preserves the behavior being examined: conversation walkthrough, paper flow, spreadsheet, browser mockup, engine prototype, telemetry query, or direct play session.
-- Before the test, write the question, setup, what to watch for, evidence that strengthens the idea, evidence that challenges it, and what decision each outcome informs.
-- During synthesis, separate `OBSERVATION`, `PARTICIPANT INTERPRETATION`, `DESIGNER INFERENCE`, bug, and request.
-- State who or what was observed and the important limitations. Do not generalize beyond the evidence.
-- Ask the human whether to continue, revise, stop, or gather more evidence. AI may recommend; it does not own that choice.
-
-## System specifications
-
-Create a `SYS-*` file only when the approved system needs a separately owned, reusable implementation contract or the human explicitly requests one. Include:
-
-- player purpose and relationship to the core loop;
-- scope, non-goals, inputs, outputs, ownership, and dependencies;
-- rules, states, transitions, priority, and tie-breaking;
-- parameters, formulas, ranges, and at least one worked example when numbers matter;
-- feedback, accessibility considerations, failure cases, exploits, and recovery behavior;
-- implementation-facing acceptance examples and unresolved decisions.
-
-Use executable calculations for nontrivial balance claims. Label invented values as assumptions and expose tuning levers separately from fixed rules.
-
-## Reviews
-
-Read [references/review-lenses.md](references/review-lenses.md) and select only one to three lenses relevant to the decision.
-
-- Review the raw design and cited context, not the desired conclusion.
-- Tie each concern to a source location, observed contradiction, or clearly labeled inference.
-- Explain the player or production consequence and offer a remedy, alternative, or focused test.
-- Preserve meaningful disagreements. Do not average incompatible advice into a vague compromise.
-- End with a recommendation and a concise decision request for the human.
+- For a focused test or playtest synthesis, use the relevant recipe in [references/artifact-recipes.md](references/artifact-recipes.md). Match the method and exposure to the decision it claims to support: a small exploratory sample may reveal failure language but does not establish a comparative effect. Separate `OBSERVATION`, `PARTICIPANT INTERPRETATION`, `DESIGNER INFERENCE`, bugs, and requests.
+- Create a `SYS-*` only for an approved system that needs a separately maintained implementation contract. Use executable calculations for consequential numeric claims and keep assumed tuning values distinct from fixed rules.
+- For a costly or cross-system review, read [references/review-lenses.md](references/review-lenses.md), choose only one to three relevant lenses, preserve disagreements, and end with a recommendation plus the human decision needed.
 
 ## Completion discipline
 

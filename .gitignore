@@ -55,3 +55,4 @@ tmp/
 
 # Local Codex state, not the distributable skill package
 .codex/
+/.ci-codex/
